@@ -1,0 +1,6 @@
+#ifndef BUAA_COMPILER_MSYMBOL_H
+#define BUAA_COMPILER_MSYMBOL_H
+class MSymbol{
+
+};
+#endif //BUAA_COMPILER_MSYMBOL_H
