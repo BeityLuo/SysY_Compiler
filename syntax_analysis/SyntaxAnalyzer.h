@@ -2,6 +2,7 @@
 #include "../lexical_analyzer/lexical_tools.h"
 #include "syntax_nodes.h"
 #include "syntax_exceptions.h"
+#include "../exception_management/MExceptionManager.h"
 
 #define self (*this)
 
@@ -14,6 +15,7 @@ class SyntaxAnalyzer {
 private:
     std::vector<TokenLexemePair *> tokenList;
     int index;
+    MCompUnit *compUnit;
 
     std::vector<ComponentNotFoundException *> exceptionStack; //异常栈
 
@@ -24,7 +26,7 @@ private:
     }
 
     // 统一使用指针而不是引用作为返回值，因为vector里不能放引用
-    MCompUnit *getComUnit() {
+    MCompUnit *getCompUnit() {
         auto decls = new std::vector<MDecl *>();
         MDecl *decl;
         while ((decl = self.getDecl()) != nullptr) decls->push_back(decl);
@@ -35,14 +37,16 @@ private:
 
         MMainFuncDef *mainFuncDef = self.getMainFuncDef();
         if (mainFuncDef == nullptr) {
-            std::string log;
-            for (auto e : self.exceptionStack) {
-                log += std::string(e->what()) + "\n";
-            }
-            throw LogException(log);
+//            std::string log;
+//            for (auto e : self.exceptionStack) {
+//                log += std::string(e->what()) + "\n";
+//            }
+//            throw LogException(log);
+            return nullptr;
         }
         if (index != self.tokenList.size()) throw LogException("There are something after MainFuncDef");
-        return new MCompUnit(decls, funcs, mainFuncDef);
+        self.compUnit = new MCompUnit(decls, funcs, mainFuncDef);
+        return self.compUnit;
         ////////////////////////////////////
         ////////////////////////////////////
         ////////////////////////////////////
@@ -92,7 +96,8 @@ private:
             constDefs->push_back(constDef);
         }
         if (self.tokenNow() != Token::SEMICN) {
-            self.addException(new ComponentNotFoundException("';'", "ConstDecl"));
+            MExceptionManager::pushException(
+                    new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
             self.index = initial_index;
             return nullptr;
         }
@@ -114,7 +119,7 @@ private:
         if (self.tokenNow() != Token::IDENFR) {
             return nullptr;
         }
-        auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+        auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
         auto constExps = new std::vector<MConstExp *>();
@@ -127,7 +132,8 @@ private:
             }
             constExps->push_back(constExp);
             if (self.tokenNow() != Token::RBRACK) {
-                self.addException(new ComponentNotFoundException("']'", "ConstDef"));
+                MExceptionManager::pushException(
+                        new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -180,7 +186,7 @@ private:
                 constInitVals->push_back(constInitVal);
             }
             if (tokenNow() != Token::RBRACE) {
-                self.addException(new ComponentNotFoundException("'}'", "ConstInitVal"));
+                // MExceptionManager::pushException(new ComponentNotFoundException("'}'", "ConstInitVal"));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -220,7 +226,7 @@ private:
             varDefs->push_back(varDef);
         }
         if (self.tokenNow() != Token::SEMICN) {
-            self.addException(new ComponentNotFoundException("';'", "VarDecl"));
+            MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
             self.index = initial_index;
             return nullptr;
         }
@@ -235,7 +241,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-        auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+        auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
         auto constExps = new std::vector<MConstExp *>();
@@ -248,7 +254,8 @@ private:
             }
             constExps->push_back(constExp);
             if (self.tokenNow() != Token::RBRACK) {
-                self.addException(new ComponentNotFoundException("']'", "VarDef"));
+                MExceptionManager::pushException(
+                        new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -299,7 +306,7 @@ private:
                 initVals->push_back(initVal);
             }
             if (tokenNow() != Token::RBRACE) {
-                self.addException(new ComponentNotFoundException("'}'", "InitVal"));
+                // MExceptionManager::pushException(new ComponentNotFoundException("'}'", "InitVal"));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -327,7 +334,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-        auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+        auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
         if (self.tokenNow() != Token::LPARENT) {
@@ -339,7 +346,8 @@ private:
         MFuncFParams *funcFParams = self.getFuncFParams();
 
         if (self.tokenNow() != Token::RPARENT) {
-            self.addException(new ComponentNotFoundException("')'", "FuncDef"));
+            MExceptionManager::pushException(
+                    new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
             self.index = initial_index;
             return nullptr;
         }
@@ -375,7 +383,8 @@ private:
         self.index++;
 
         if (self.tokenNow() != Token::RPARENT) {
-            self.addException(new ComponentNotFoundException("')'", "MainFuncDef"));
+            MExceptionManager::pushException(
+                    new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
             self.index = initial_index;
             return nullptr;
         }
@@ -437,7 +446,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-        auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+        auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
         if (self.tokenNow() == Token::LBRACK) { // 处理'['
@@ -445,7 +454,8 @@ private:
             self.index++;
 
             if (self.tokenNow() != Token::RBRACK) { // 处理']'
-                self.addException(new ComponentNotFoundException("']'", "FuncFParam"));
+                MExceptionManager::pushException(
+                        new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -463,7 +473,8 @@ private:
                 constExps->push_back(constExp);
 
                 if (self.tokenNow() != Token::RBRACK) {
-                    self.addException(new ComponentNotFoundException("']'", "getFuncFParam"));
+                    MExceptionManager::pushException(
+                            new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
@@ -487,20 +498,23 @@ private:
         auto blockItems = new std::vector<MBlockItem *>();
         MBlockItem *blockItem;
         if (self.tokenNow() == Token::RBRACE) {
+            int lineNum = self.tokenList[self.index]->lineNum;
             self.index++;
-            return new MBlock(blockItems);
+            return new MBlock(blockItems, lineNum);
         }
         while ((blockItem = self.getBlockItem()) != nullptr) {
             blockItems->push_back(blockItem);
         }
 
         if (self.tokenNow() != Token::RBRACE) {
-            self.addException(new ComponentNotFoundException("'}'", "Block"));
+            // MExceptionManager::pushException(new ComponentNotFoundException("'}'", "Block"));
             self.index = initial_index;
             return nullptr;
         }
+        // 用于错误处理'g'号错误
+        int lineNum = self.tokenList[self.index]->lineNum;
         self.index++;
-        return new MBlock(blockItems);
+        return new MBlock(blockItems, lineNum);
     }
 
     MBlockItem *getBlockItem() {
@@ -522,7 +536,8 @@ private:
             return new MStmtBlockItem(stmt);
         }
     }
-    MLValStmt* getLValStmt() {
+
+    MLValStmt *getLValStmt() {
         int initial_index = self.index;
         // 处理"LVal = getint();" 和 "LVal = Exp;"
         MLVal *lVal = self.getLVal();
@@ -546,13 +561,15 @@ private:
             }
             self.index++;
             if (self.tokenNow() != Token::RPARENT) {
-                self.addException(new ComponentNotFoundException("')'", "LValStmt"));
+                MExceptionManager::pushException(
+                        new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
             self.index++;
             if (self.tokenNow() != Token::SEMICN) {
-                self.addException(new ComponentNotFoundException("';'", "LValStmt"));
+                MExceptionManager::pushException(
+                        new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -566,7 +583,8 @@ private:
                 return nullptr;
             }
             if (self.tokenNow() != Token::SEMICN) {
-                self.addException(new ComponentNotFoundException("';'", "LValStmt"));
+                MExceptionManager::pushException(
+                        new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -575,7 +593,7 @@ private:
         }
     }
 
-    MExpStmt* getExpStmt() {
+    MExpStmt *getExpStmt() {
         int initial_index = self.index;
         MExp *exp = self.getExp();
         if (exp == nullptr) {
@@ -583,7 +601,7 @@ private:
             return nullptr;
         }
         if (self.tokenNow() != Token::SEMICN) {
-            self.addException(new ComponentNotFoundException("';'", "ExpStmt("));
+            MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
             self.index = initial_index;
             return nullptr;
         }
@@ -596,18 +614,26 @@ private:
         switch (self.tokenNow()) {
             case Token::IDENFR: {
                 // 可能是Exp中的函数调用，或者是LVal，或者是个普通的exp
+                self.index++;
+                if (self.tokenNow() == Token::LPARENT) {
+                    self.index--;
 
-                MLValStmt *lValStmt = self.getLValStmt();
-                if (lValStmt != nullptr) {
+                    MExpStmt *expStmt = self.getExpStmt();
+                    if (expStmt == nullptr) {
+                        self.index = initial_index;
+                        return nullptr;
+                    }
+                    return expStmt;
+                } else {
+                    self.index--;
+
+                    MLValStmt *lValStmt = self.getLValStmt();
+                    if (lValStmt == nullptr) {
+                        self.index = initial_index;
+                        return nullptr;
+                    }
                     return lValStmt;
                 }
-
-                MExpStmt *expStmt = self.getExpStmt();
-                if (expStmt != nullptr) {
-                    return expStmt;
-                }
-                self.index = initial_index;
-                return nullptr;
             }
             case Token::SEMICN: //空语句
                 self.index++;
@@ -636,7 +662,8 @@ private:
                 }
 
                 if (self.tokenNow() != Token::RPARENT) {
-                    self.addException(new ComponentNotFoundException("')'", "IfStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
@@ -676,7 +703,8 @@ private:
                 }
 
                 if (self.tokenNow() != Token::RPARENT) {
-                    self.addException(new ComponentNotFoundException("')'", "WhileStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
@@ -690,30 +718,39 @@ private:
                 return new MWhileStmt(whileCond, whileStmt);
             }
 
-            case Token::BREAKTK:
+            case Token::BREAKTK: {
                 self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
                 if (self.tokenNow() != Token::SEMICN) {
-                    self.addException(new ComponentNotFoundException("';'", "BreakStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
                 self.index++;
-                return new MBreakStmt();
-            case Token::CONTINUETK:
+                return new MBreakStmt(lineNum);
+            }
+
+            case Token::CONTINUETK: {
                 self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
                 if (self.tokenNow() != Token::SEMICN) {
-                    self.addException(new ComponentNotFoundException("';'", "ContinueStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
                 self.index++;
-                return new MContinueStmt();
-            case Token::RETURNTK:
+                return new MContinueStmt(lineNum);
+            }
+
+            case Token::RETURNTK:{
                 self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
                 MExp *exp;
                 if (self.tokenNow() == Token::SEMICN) {
                     self.index++;
-                    return new MReturnStmt(nullptr);
+                    return new MReturnStmt(nullptr, lineNum);
                 } else {
                     exp = self.getExp();
                     if (exp == nullptr) {
@@ -721,15 +758,19 @@ private:
                         return nullptr;
                     }
                     if (self.tokenNow() != Token::SEMICN) {
-                        self.addException(new ComponentNotFoundException("';'", "ReturnStmt"));
+                        MExceptionManager::pushException(
+                                new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                         self.index = initial_index;
                         return nullptr;
                     }
                     self.index++;
-                    return new MReturnStmt(exp);
+                    return new MReturnStmt(exp, lineNum);
                 }
+            }
+
             case Token::PRINTFTK: {
                 self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
 
                 if (self.tokenNow() != Token::LPARENT) {
                     self.index = initial_index;
@@ -741,7 +782,13 @@ private:
                     self.index = initial_index;
                     return nullptr;
                 }
-                auto *formatString = new MFormatString(self.tokenList[self.index]->lexeme);
+                auto formatString = new MFormatString(self.tokenList[self.index]->lexeme);
+                if (!formatString->checkLegal()) {
+                    MExceptionManager::pushException(
+                            new MIllegalCharInFormatStringException(self.tokenList[self.index]->lineNum));
+                    self.index = initial_index;
+                    return nullptr;
+                }
                 self.index++;
 
                 auto printfExps = new std::vector<MExp *>();
@@ -757,30 +804,33 @@ private:
                 }
 
                 if (self.tokenNow() != Token::RPARENT) {
-                    self.addException(new ComponentNotFoundException("')'", "PrintfStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
                 self.index++;
 
                 if (self.tokenNow() != Token::SEMICN) {
-                    self.addException(new ComponentNotFoundException("';'", "PrintfStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
                 self.index++;
 
-                return new MPrintfStmt(formatString, printfExps);
+                return new MPrintfStmt(formatString, printfExps, lineNum);
             }
 
             default: {
-                MExp* exp = self.getExp();
+                MExp *exp = self.getExp();
                 if (exp == nullptr) {
                     self.index = initial_index;
                     return nullptr;
                 }
                 if (self.tokenNow() != Token::SEMICN) {
-                    self.addException(new ComponentNotFoundException("';'", "ExpStmt"));
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
@@ -817,7 +867,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-        auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+        auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
         auto exps = new std::vector<MExp *>();
@@ -832,7 +882,8 @@ private:
             exps->push_back(exp);
 
             if (self.tokenNow() != Token::RBRACK) {
-                self.addException(new ComponentNotFoundException("']'", "LVal"));
+                MExceptionManager::pushException(
+                        new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -853,7 +904,8 @@ private:
             }
 
             if (self.tokenNow() != Token::RPARENT) {
-                self.addException(new ComponentNotFoundException("')'", "PrimaryExp"));
+                MExceptionManager::pushException(
+                        new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                 self.index = initial_index;
                 return nullptr;
             }
@@ -893,7 +945,7 @@ private:
 
         if (self.tokenNow() == Token::IDENFR) {
             // 处理UnaryExp->Ident([FuncRParams]) 和 UnaryExp->PrimaryExp->LVal
-            auto *ident = new MIdent(self.tokenList[self.index]->lexeme);
+            auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
             self.index++;
 
             if (self.tokenNow() == Token::LPARENT) {
@@ -902,7 +954,8 @@ private:
                 MFuncRParams *funcRParams = self.getFuncRParams();
 
                 if (self.tokenNow() != Token::RPARENT) {
-                    self.addException(new ComponentNotFoundException("')'", "IdentUnaryExp"));
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                     self.index = initial_index;
                     return nullptr;
                 }
@@ -1132,10 +1185,14 @@ private:
 public:
 
     explicit SyntaxAnalyzer(std::vector<TokenLexemePair *> &tokenList) :
-            tokenList(tokenList), index(0){}
+            tokenList(tokenList), index(0) {}
 
-    MCompUnit &analyze() {
-        return *self.getComUnit();
+    MCompUnit *analyze() {
+        return self.getCompUnit();
+    }
+
+    MCompUnit *ast() {
+        return self.compUnit;
     }
 
 

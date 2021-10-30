@@ -46,7 +46,7 @@ private:
         while (is_space(self.source_code[self.position]) && self.position < self.code_len) {
             // TODO 还要处理段注释里面的行号！！！！
             if(self.source_code[self.position] == '\n') {
-                self.lineNum++
+                self.lineNum++;
             }
             self.position ++;
         }

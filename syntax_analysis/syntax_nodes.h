@@ -12,7 +12,7 @@
 #define self (*this)
 
 template<class T>
-void pushVector(vector<T>* v1, vector<T>* v2) {
+void pushVector(std::vector<T> *v1, std::vector<T> *v2) {
     for (auto vv : *v2) {
         v1->push_back(vv);
     }
@@ -25,12 +25,13 @@ public:
 };
 
 class MCompUnit : public MSyntaxNode {
-private:
+public:
     std::vector<MDecl *> *decls;
     std::vector<MFuncDef *> *funcs;
     MMainFuncDef *mainFuncDef;
 public:
-    MCompUnit(std::vector<MDecl *> *decls, std::vector<MFuncDef *> *funcs, MMainFuncDef *mainFuncDef) : mainFuncDef(mainFuncDef) {
+    MCompUnit(std::vector<MDecl *> *decls, std::vector<MFuncDef *> *funcs, MMainFuncDef *mainFuncDef)
+            : mainFuncDef(mainFuncDef), decls(new std::vector<MDecl *>()), funcs(new std::vector<MFuncDef *>()) {
         pushVector(self.decls, decls);
         pushVector(self.funcs, funcs);
     }
@@ -42,11 +43,19 @@ public:
     }
 };
 
+class MType : MSyntaxNode {
+public:
+    Token type;
+public:
+    MType(Token type) : type(type) {}
+};
 
 
-class MBType : MSyntaxNode {
+class MBType : public MType {
     // 不输出自己
 public:
+    MBType() : MType(Token::INTTK) {}
+
     std::string className() override {
         return "<BType>\n"; //虽然用不到还是要实现这个方法，否则不能实例化
     }
@@ -56,6 +65,22 @@ public:
     }
 };
 
+class MFuncType : public MType {
+public:
+    explicit MFuncType(Token token) : MType(token) {
+        if (token == Token::VOIDTK || token == Token::INTTK) {
+            self.type = token;
+            return;
+        } else
+            throw "Wong type for MFuncType's Constructor: " + token2string(token);
+    }
+
+    std::string toString() override;
+
+    std::string className() override {
+        return "<FuncType>\n";
+    }
+};
 
 
 class MVariableInit : public MSyntaxNode {
@@ -70,7 +95,7 @@ public:
 };
 
 class MConstExpConstInitVal : public MConstInitVal {
-private:
+public:
     MConstExp *constExp;
 public:
     explicit MConstExpConstInitVal(MConstExp *constExp) : constExp(constExp) {}
@@ -80,10 +105,11 @@ public:
 };
 
 class MArrayConstInitVal : public MConstInitVal {
-private:
+public:
     std::vector<MConstInitVal *> *constInitVals;
 public:
-    explicit MArrayConstInitVal(std::vector<MConstInitVal *> *constInitVals) {
+    explicit MArrayConstInitVal(std::vector<MConstInitVal *> *constInitVals) :
+            constInitVals(new std::vector<MConstInitVal *>()) {
         pushVector(self.constInitVals, constInitVals);
     }
 
@@ -99,7 +125,7 @@ public:
 };
 
 class MExpInitVal : public MInitVal {
-private:
+public:
     MExp *exp;
 public:
     explicit MExpInitVal(MExp *exp) : exp(exp) {}
@@ -109,10 +135,10 @@ public:
 };
 
 class MArrayInitVal : public MInitVal {
-private:
+public:
     std::vector<MInitVal *> *initVals;
 public:
-    explicit MArrayInitVal(std::vector<MInitVal *> *initVals) {
+    explicit MArrayInitVal(std::vector<MInitVal *> *initVals) : initVals(new std::vector<MInitVal *>()) {
         pushVector(self.initVals, initVals);
     }
 
@@ -120,16 +146,17 @@ public:
 };
 
 class MDef : public MSyntaxNode {
-protected:
+public:
     MIdent *ident;
     std::vector<MConstExp *> *constExps;
     MVariableInit *init;
 public:
     MDef(MIdent *ident, std::vector<MConstExp *> *constExps, MVariableInit *init)
-            : ident(ident), init(init) {
+            : ident(ident), init(init), constExps(new std::vector<MConstExp *>()) {
         pushVector(self.constExps, constExps);
     }
-    MDef() : ident(nullptr), constExps(new std::vector<MConstExp*>()), init(nullptr) {}
+
+    MDef() : ident(nullptr), constExps(new std::vector<MConstExp *>()), init(nullptr) {}
 };
 
 class MConstDef : public MDef {
@@ -138,9 +165,6 @@ public:
     MConstDef(MIdent *ident, std::vector<MConstExp *> *constExps, MConstInitVal *constInitVal) {
         self.ident = ident;
         self.init = constInitVal;
-        for (auto constExp : *constExps) {
-            self.constExps->push_back(constExp);
-        }
     }
 
     std::string className() override {
@@ -157,9 +181,6 @@ public:
             : MDef(ident, constExps, initVal) {
         self.ident = ident;
         self.init = initVal;
-        for (auto constExp : *constExps) {
-            self.constExps->push_back(constExp);
-        }
     }
 
     std::string toString() override;
@@ -171,7 +192,7 @@ public:
 };
 
 class MDecl : public MSyntaxNode {
-protected:
+public:
     MBType *type;
     std::vector<MDef *> *defs;
 public:
@@ -203,7 +224,7 @@ public:
 
     MVarDecl(MBType *type, std::vector<MVarDef *> *varDefs) {
         self.type = type;
-        for (auto varDef : *varDef) {
+        for (auto varDef : *varDefs) {
             self.defs->push_back(varDef);
         }
     }
@@ -217,7 +238,7 @@ public:
 };
 
 class MFuncDef : public MSyntaxNode {
-private:
+public:
     MFuncType *funcType;
     MIdent *ident;
     MFuncFParams *funcFParams;
@@ -234,7 +255,7 @@ public:
 };
 
 class MMainFuncDef : public MSyntaxNode {
-private:
+public:
     MBlock *block;
 public:
     explicit MMainFuncDef(MBlock *block) : block(block) {}
@@ -246,30 +267,12 @@ public:
     }
 };
 
-class MFuncType : public MSyntaxNode {
-private:
-    Token type;
-public:
-    explicit MFuncType(Token token) {
-        if (token == Token::VOIDTK || token == Token::INTTK) {
-            self.type = token;
-            return;
-        } else
-            throw "Wong type for MFuncType's Constructor: " + token2string(token);
-    }
-
-    std::string toString() override;
-
-    std::string className() override {
-        return "<FuncType>\n";
-    }
-};
 
 class MFuncFParams : public MSyntaxNode {
-private:
+public:
     std::vector<MFuncFParam *> *funcFParams;
 public:
-    explicit MFuncFParams(std::vector<MFuncFParam *> *funcFParams) {
+    explicit MFuncFParams(std::vector<MFuncFParam *> *funcFParams) : funcFParams(new std::vector<MFuncFParam *>()) {
         pushVector(self.funcFParams, funcFParams);
     }
 
@@ -281,13 +284,13 @@ public:
 };
 
 class MFuncFParam : public MSyntaxNode {
-private:
+public:
     MBType *bType;
     MIdent *ident;
     std::vector<MConstExp *> *constExps;
 public:
     MFuncFParam(MBType *bType, MIdent *ident, std::vector<MConstExp *> *constExps) :
-            bType(bType), ident(ident) {
+            bType(bType), ident(ident), constExps(new std::vector<MConstExp *>()) {
         pushVector(self.constExps, constExps);
     }
 
@@ -299,11 +302,13 @@ public:
 };
 
 class MBlock : public MSyntaxNode {
-private:
+public:
     std::vector<MBlockItem *> *blockItems;
+    int lineNum;
 public:
 
-    explicit MBlock(std::vector<MBlockItem *> *blockItems) {
+    MBlock(std::vector<MBlockItem *> *blockItems, int lineNum)
+    : blockItems(new std::vector<MBlockItem *>()), lineNum(lineNum) {
         pushVector(self.blockItems, blockItems);
     }
 
@@ -323,7 +328,7 @@ public:
 };
 
 class MDeclBlockItem : public MBlockItem {
-private:
+public:
     MDecl *decl;
 public:
     explicit MDeclBlockItem(MDecl *decl) : decl(decl) {}
@@ -332,7 +337,7 @@ public:
 };
 
 class MStmtBlockItem : public MBlockItem {
-private:
+public:
     MStmt *stmt;
 public:
     explicit MStmtBlockItem(MStmt *stmt) : stmt(stmt) {}
@@ -348,7 +353,7 @@ public:
 };
 
 class MLValStmt : public MStmt {
-private:
+public:
     MLVal *lVal;
     MExp *exp;
 public:
@@ -360,7 +365,7 @@ public:
 };
 
 class MExpStmt : public MStmt {
-private:
+public:
     MExp *exp;
 public:
     explicit MExpStmt(MExp *exp) : exp(exp) {}
@@ -376,7 +381,7 @@ public:
 };
 
 class MBlockStmt : public MStmt {
-private:
+public:
     MBlock *block;
 public:
     explicit MBlockStmt(MBlock *block) : block(block) {}
@@ -385,7 +390,7 @@ public:
 };
 
 class MIfStmt : public MStmt {
-private:
+public:
     MCond *cond;
     MStmt *ifStmt;
     MStmt *elseStmt;
@@ -398,7 +403,7 @@ public:
 };
 
 class MWhileStmt : public MStmt {
-private:
+public:
     MCond *cond;
     MStmt *stmt;
 public:
@@ -409,19 +414,26 @@ public:
 
 class MBreakStmt : public MStmt {
 public:
+    int lineNum;
+public:
+    MBreakStmt(int lineNum) : lineNum(lineNum) {}
     std::string toString() override;
 };
 
 class MContinueStmt : public MStmt {
 public:
+    int lineNum;
+public:
+    MContinueStmt(int lineNum) : lineNum(lineNum) {}
     std::string toString() override;
 };
 
 class MReturnStmt : public MStmt {
-private:
-    MExp *exp;
 public:
-    explicit MReturnStmt(MExp *exp) : exp(exp) {}
+    MExp *exp;
+    int lineNum;
+public:
+    explicit MReturnStmt(MExp *exp, int lineNum) : exp(exp), lineNum(lineNum) {}
 
     MReturnStmt() : exp(nullptr) {}
 
@@ -429,12 +441,13 @@ public:
 };
 
 class MPrintfStmt : public MStmt {
-private:
+public:
     MFormatString *formatString;
     std::vector<MExp *> *exps;
+    int lineNum;
 public:
-    MPrintfStmt(MFormatString *formatString, std::vector<MExp *> *exps)
-            : formatString(formatString) {
+    MPrintfStmt(MFormatString *formatString, std::vector<MExp *> *exps, int lineNum)
+            : formatString(formatString), exps(new std::vector<MExp *>()), lineNum(lineNum) {
         pushVector(self.exps, exps);
     }
 
@@ -442,7 +455,7 @@ public:
 };
 
 class MExp : public MSyntaxNode {
-private:
+public:
     MAddExp *addExp;
 public:
     explicit MExp(MAddExp *addExp) : addExp(addExp) {}
@@ -455,7 +468,7 @@ public:
 };
 
 class MConstExp : public MSyntaxNode {
-private:
+public:
     MAddExp *addExp;
 public:
     explicit MConstExp(MAddExp *addExp) : addExp(addExp) {}
@@ -469,7 +482,7 @@ public:
 
 
 class MCond : public MSyntaxNode {
-private:
+public:
     MLOrExp *lOrExp;
 public:
     explicit MCond(MLOrExp *lOrExp) : lOrExp(lOrExp) {}
@@ -482,12 +495,12 @@ public:
 };
 
 class MLVal : public MSyntaxNode {
-private:
+public:
     MIdent *ident;
     std::vector<MExp *> *exps;
 public:
     MLVal(MIdent *ident, std::vector<MExp *> *exps)
-            : ident(ident) {
+            : ident(ident), exps(new std::vector<MExp *>()) {
         pushVector(self.exps, exps);
     }
 
@@ -506,7 +519,7 @@ public:
 };
 
 class MExpPrimaryExp : public MPrimaryExp {
-private:
+public:
     MExp *exp;
 public:
     explicit MExpPrimaryExp(MExp *exp) : exp(exp) {}
@@ -515,7 +528,7 @@ public:
 };
 
 class MLValPrimaryExp : public MPrimaryExp {
-private:
+public:
     MLVal *lVal;
 public:
     explicit MLValPrimaryExp(MLVal *lVal) : lVal(lVal) {}
@@ -524,7 +537,7 @@ public:
 };
 
 class MNumberPrimaryExp : public MPrimaryExp {
-private:
+public:
     MNumber *number;
 public:
     explicit MNumberPrimaryExp(MNumber *number) : number(number) {}
@@ -533,7 +546,7 @@ public:
 };
 
 class MNumber : public MSyntaxNode {
-private:
+public:
     MIntConst *intConst;
 public:
     explicit MNumber(MIntConst *intConst) : intConst(intConst) {}
@@ -553,7 +566,7 @@ public:
 };
 
 class MPrimaryExpUnaryExp : public MUnaryExp {
-private:
+public:
     MPrimaryExp *primaryExp;
 public:
     explicit MPrimaryExpUnaryExp(MPrimaryExp *primaryExp) : primaryExp(primaryExp) {}
@@ -562,7 +575,7 @@ public:
 };
 
 class MFuncUnaryExp : public MUnaryExp {
-private:
+public:
     MIdent *ident;
     MFuncRParams *funcRParams;
 public:
@@ -573,7 +586,7 @@ public:
 };
 
 class MUnaryExpUnaryExp : public MUnaryExp {
-private:
+public:
     MUnaryOp *unaryOp;
     MUnaryExp *unaryExp;
 public:
@@ -584,7 +597,7 @@ public:
 };
 
 class MUnaryOp : public MSyntaxNode {
-private:
+public:
     Token op;
 public:
     // 只能是
@@ -602,10 +615,10 @@ public:
 };
 
 class MFuncRParams : public MSyntaxNode {
-private:
+public:
     std::vector<MExp *> *exps;
 public:
-    explicit MFuncRParams(std::vector<MExp *> *exps) {
+    explicit MFuncRParams(std::vector<MExp *> *exps) : exps(new std::vector<MExp *>()) {
         pushVector(self.exps, exps);
     }
 
@@ -617,17 +630,18 @@ public:
 };
 
 class MMulExp : public MSyntaxNode {
-private:
+public:
     std::vector<MUnaryExp *> *unaryExps;
     std::vector<Token> *ops;
 public:
     MMulExp(std::vector<MUnaryExp *> *unaryExps, std::vector<Token> *ops)
-            : unaryExps(unaryExps) {
-        pushVector(self.ops, ops);
+            : unaryExps(new std::vector<MUnaryExp *>()), ops(new std::vector<Token>()) {
 
-        if (self.unaryExps->size() != self.ops->size() + 1) {
+        if (unaryExps->size() != ops->size() + 1) {
             throw "In MMulExp's constructor: size of unaryExps ans ops not match";
         }
+        pushVector(self.unaryExps, unaryExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::MULT && op != Token::DIV && op != Token::MOD) {
                 throw "In MMulExp's constructor: wong para: op = " + token2string(op);
@@ -643,17 +657,19 @@ public:
 };
 
 class MAddExp : public MSyntaxNode {
-private:
+public:
     std::vector<MMulExp *> *mulExps;
     std::vector<Token> *ops;
 public:
     MAddExp(std::vector<MMulExp *> *mulExps, std::vector<Token> *ops)
-            : mulExps(mulExps) {
-        pushVector(self.ops, ops);
+            : mulExps(new std::vector<MMulExp *>()), ops(new std::vector<Token>()) {
 
-        if (self.mulExps->size() != self.ops->size() + 1) {
+
+        if (mulExps->size() != ops->size() + 1) {
             throw "In MAddExp's constructor: size of mulExps ans ops not match";
         }
+        pushVector(self.mulExps, mulExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::PLUS && op != Token::MINU) {
                 throw "In MAddExp's constructor: wong para: op = " + token2string(op);
@@ -669,16 +685,17 @@ public:
 };
 
 class MRelExp : public MSyntaxNode {
-private:
+public:
     std::vector<MAddExp *> *addExps;
     std::vector<Token> *ops;
 public:
     MRelExp(std::vector<MAddExp *> *addExps, std::vector<Token> *ops)
-            : addExps(addExps) {
-        pushVector(self.ops, ops);
-        if (self.addExps->size() != self.ops->size() + 1) {
+            : addExps(new std::vector<MAddExp *>()), ops(new std::vector<Token>()) {
+        if (addExps->size() != ops->size() + 1) {
             throw "In MAddExp's constructor: size of addExps ans ops not match";
         }
+        pushVector(self.addExps, addExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::LSS && op != Token::LEQ
                 && op != Token::GRE && op != Token::GEQ) {
@@ -695,17 +712,18 @@ public:
 };
 
 class MEqExp : public MSyntaxNode {
-private:
+public:
     std::vector<MRelExp *> *relExps;
     std::vector<Token> *ops;
 public:
     MEqExp(std::vector<MRelExp *> *relExps, std::vector<Token> *ops)
-            : relExps(relExps) {
-        pushVector(self.ops, ops);
+            : relExps(new std::vector<MRelExp *>()), ops(new std::vector<Token>()) {
 
-        if (self.relExps->size() != self.ops->size() + 1) {
+        if (relExps->size() != ops->size() + 1) {
             throw "In MEqExp's constructor: size of relExps ans ops not match";
         }
+        pushVector(self.relExps, relExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::EQL && op != Token::NEQ) {
                 throw "In MEqExp's constructor: wong para: op = " + token2string(op);
@@ -721,17 +739,19 @@ public:
 };
 
 class MLAndExp : public MSyntaxNode {
-private:
+public:
     std::vector<MEqExp *> *eqExps;
     std::vector<Token> *ops;
 public:
     MLAndExp(std::vector<MEqExp *> *eqExps, std::vector<Token> *ops)
-            : eqExps(eqExps) {
-        pushVector(self.ops, ops);
+            : eqExps(new std::vector<MEqExp *>()), ops(new std::vector<Token>()) {
 
-        if (self.eqExps->size() != self.ops->size() + 1) {
+
+        if (eqExps->size() != ops->size() + 1) {
             throw "In MLAndExp's constructor: size of eqExps ans ops not match";
         }
+        pushVector(self.eqExps, eqExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::AND) {
                 throw "In MLAndExp's constructor: wong para: op = " + token2string(op);
@@ -748,17 +768,17 @@ public:
 
 
 class MLOrExp : public MSyntaxNode {
-private:
+public:
     std::vector<MLAndExp *> *lAndExps;
     std::vector<Token> *ops;
 public:
     MLOrExp(std::vector<MLAndExp *> *lAndExps, std::vector<Token> *ops)
-            : lAndExps(lAndExps) {
-        pushVector(self.ops, ops);
-
-        if (self.lAndExps->size() != self.ops->size() + 1) {
+            : lAndExps(new std::vector<MLAndExp *>()), ops(new std::vector<Token>()) {
+        if (lAndExps->size() != ops->size() + 1) {
             throw "In MLOrExp's constructor: size of lAndExps ans ops not match";
         }
+        pushVector(self.lAndExps, lAndExps);
+        pushVector(self.ops, self.ops);
         for (Token op : *(self.ops)) {
             if (op != Token::OR) {
                 throw "In MLOrExp's constructor: wong para: op = " + token2string(op);
@@ -774,13 +794,14 @@ public:
 };
 
 class MIdent : public MSyntaxNode {
-private:
-    std::string ident;
 public:
-    explicit MIdent(std::string ident) : ident(std::move(ident)) {}
+    std::string name;
+    int lineNum;
+public:
+    explicit MIdent(std::string name, int lineNum) : name(std::move(name)), lineNum(lineNum){}
 
     std::string toString() override {
-        return token2string(Token::IDENFR) + " " + ident + "\n";
+        return token2string(Token::IDENFR) + " " + self.name + "\n";
     }
 
     std::string className() override {
@@ -789,7 +810,7 @@ public:
 };
 
 class MIntConst : public MSyntaxNode {
-private:
+public:
     std::string intConst;
 public:
     explicit MIntConst(std::string intConst) : intConst(std::move(intConst)) {}
@@ -804,10 +825,44 @@ public:
 };
 
 class MFormatString : public MSyntaxNode {
-private:
-    std::string formatString;
 public:
-    explicit MFormatString(std::string formatString) : formatString(std::move(formatString)) {}
+    std::string formatString;
+    int formatCharNum;
+    bool isLegal;
+public:
+    explicit MFormatString(std::string formatString)
+    : formatString(std::move(formatString)), formatCharNum(0) {
+        // 只允许 ' ', '!', '%d', '\n'出现
+        char c;
+        int len = self.formatString.size();
+        if (len < 2 || self.formatString[0] != '"' ||
+        self.formatString[len - 1] != '"') {
+            self.isLegal = false;
+            return;
+        }
+        for (int i = 1, c = self.formatString[1]; i < len - 1; i++, c = self.formatString[i]) {
+            if (c == '%') {
+                // 判断%d
+                i++;
+                if (i == len || self.formatString[i] != 'd') {
+                    self.isLegal = false;
+                    return;
+                }
+                self.formatCharNum++;
+            } else if (c == '\\') {
+                // 判断%\n
+                i++;
+                if (i == len || self.formatString[i] != 'n') {
+                    self.isLegal = false;
+                    return;
+                }
+            } else if (!((c > 39 && c < 127) || c == 32 || c == 33)) {
+                self.isLegal = false;
+                return;
+            }
+        }
+        self.isLegal = true;
+    }
 
     std::string toString() override {
         return token2string(Token::STRCON) + " " + formatString + "\n";
@@ -815,6 +870,14 @@ public:
 
     std::string className() override {
         return "<FormatString>\n";
+    }
+
+    bool checkLegal() {
+        return self.isLegal;
+    }
+
+    int getFormatCharsNum() {
+        return self.formatCharNum;
     }
 };
 

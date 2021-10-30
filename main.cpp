@@ -5,6 +5,8 @@
 #include <vector>
 #include "lexical_analyzer/LexicalAnalyzer.h"
 #include "syntax_analysis/SyntaxAnalyzer.h"
+#include "semantic_analysis/SemanticAnalyzer.h"
+#include "exception_management/MExceptionManager.h"
 
 std::string file2string(std::string file_path) {
     std::ifstream ifile(file_path);
@@ -23,21 +25,34 @@ void string2file(std::string file_path, std::string data) {
 }
 const std::string in_file_path = "testfile.txt";
 const std::string out_file_path = "output.txt";
+const std::string error_file_path = "error.txt";
 
 int main(){
     std::string source_code = file2string(in_file_path);
     LexicalAnalyzer lexical_analyzer(source_code);
     std::vector<TokenLexemePair*> token_list;
-
+    std::string ans;
     lexical_analyzer.analyze(token_list);
     SyntaxAnalyzer syntax_analyzer(token_list);
-    std::string ans;
-    ans = syntax_analyzer.analyze().toString();
-    for (auto tokenPair : token_list) {
-        delete(tokenPair);
+    MCompUnit* ast = syntax_analyzer.analyze();
+    if (ast != nullptr) {
+        ans = ast->toString();
+
+        SemanticAnalyzer semanticAnalyzer(syntax_analyzer.ast());
+        semanticAnalyzer.analyze();
     }
-    SemanticAnalyzer semanticAnalyzer(syntax_analyzer.ast());
-    semanticAnalyzer.analyze();
-    string2file(out_file_path, ans);
+
+//    for (auto tokenPair : token_list) {
+//        delete(tokenPair);
+//    }
+
+    if (!MExceptionManager::empty()) {
+        ans = MExceptionManager::toString();
+        std::cout << ans;
+        string2file(error_file_path, MExceptionManager::toString());
+    } else {
+        std::cout << ans;
+        string2file(out_file_path, ans);
+    }
     return 0;
 }

@@ -18,9 +18,9 @@ std::string MConstDecl::toString() {
     std::string ans = fixedToken2PairString(Token::CONSTTK)
                       + self.type->toString();
 
-    for (auto ite = self.constDefs->begin(); ite != self.constDefs->end(); ++ite) {
+    for (auto ite = self.defs->begin(); ite != self.defs->end(); ++ite) {
         ans += (*ite)->toString();
-        if (ite != self.constDefs->end() - 1) {
+        if (ite != self.defs->end() - 1) {
             ans += fixedToken2PairString(Token::COMMA);
         }
     }
@@ -31,9 +31,9 @@ std::string MConstDecl::toString() {
 std::string MVarDecl::toString() {
     std::string ans = self.type->toString();
 
-    for (auto ite = self.varDefs->begin(); ite != self.varDefs->end(); ++ite) {
+    for (auto ite = self.defs->begin(); ite != self.defs->end(); ++ite) {
         ans += (*ite)->toString();
-        if (ite != self.varDefs->end() - 1) {
+        if (ite != self.defs->end() - 1) {
             ans += fixedToken2PairString(Token::COMMA);
         }
     }
@@ -48,7 +48,7 @@ std::string MConstDef::toString() {
                + constExp->toString()
                + fixedToken2PairString(Token::RBRACK);
     }
-    ans += fixedToken2PairString(Token::ASSIGN) + self.constInitVal->toString()
+    ans += fixedToken2PairString(Token::ASSIGN) + self.init->toString()
            + self.className();
     return ans;
 }
@@ -61,8 +61,8 @@ std::string MVarDef::toString() {
                + constExp->toString()
                + fixedToken2PairString(Token::RBRACK);
     }
-    if (initVal != nullptr)
-        ans += fixedToken2PairString(Token::ASSIGN) + self.initVal->toString();
+    if (self.init != nullptr)
+        ans += fixedToken2PairString(Token::ASSIGN) + self.init->toString();
     ans += self.className();
     return ans;
 }

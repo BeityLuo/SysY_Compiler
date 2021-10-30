@@ -4,10 +4,10 @@
 #include <unordered_map>
 #include <vector>
 #include "MSymbol.h"
-#include "MSymbolTableItem.h"
 
 #define self (*this)
 
+class MSymbolTableItem;
 class MSymbolTable {
 private:
     std::unordered_map<std::string, MSymbolTableItem *> table;
@@ -17,9 +17,7 @@ public:
     MSymbolTable() : childScopeTable(nullptr), fatherScopeTable(nullptr) {}
     MSymbolTable(MSymbolTable* fatherScopeTable) : childScopeTable(nullptr), fatherScopeTable(fatherScopeTable) {}
 
-    void addSymbol(MSymbolTableItem *symbolTableItem) {
-        self.table[symbolTableItem.getSymbol()] = symbolTableItem;
-    }
+    void addSymbolItem(MSymbolTableItem *symbolTableItem);
 
     bool contains(MSymbol *symbol) {
         return false;
@@ -38,6 +36,10 @@ public:
 
     MSymbolTable* getChildScopTable() {
         return self.childScopeTable;
+    }
+
+    MSymbolTableItem* getTableItem(std::string name) {
+        return self.table[name];
     }
 
 };

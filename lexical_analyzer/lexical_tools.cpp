@@ -139,13 +139,19 @@ std::string clear_comments(std::string code) {
         } else if (c == '/' && index != len - 1 && code[index + 1] == '*') {
             // 块注释的优先级最低
             index += 2; // 跳过"/*"
-            for(; index != len - 1 && !(code[index] == '*' && code[index + 1] == '/'); index++);
+            int lineNum = 0;
+            for(; index != len - 1 && !(code[index] == '*' && code[index + 1] == '/'); index++) {
+                if (code[index] == '\n')
+                    lineNum++;
+            }
             if (index == len - 1 && !(code[index] == '*' && code[index + 1] == '/')) {
                 // 直到文件结尾也没找到"*/"，就抛出异常
                 throw RightCommentSignNotFoundException("We dont found a \"*/\" till the end of file");
             }
             index += 1; //index处于"*/"的'*', 把'/'跳过去
-            ans += ' ';
+            for(int i = 0; i < lineNum; i++) {
+                ans += '\n';
+            }
         } else {
             ans += c;
         }
