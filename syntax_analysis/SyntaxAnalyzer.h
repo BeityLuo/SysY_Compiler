@@ -95,14 +95,11 @@ private:
             }
             constDefs->push_back(constDef);
         }
-        if (self.tokenNow() != Token::SEMICN) {
+        if (self.tokenNow() != Token::SEMICN)
             MExceptionManager::pushException(
                     new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-            self.index = initial_index;
-            return nullptr;
-        }
-
-        self.index++;
+        else
+            self.index++;
         return new MConstDecl(bType, constDefs);
     }
 
@@ -131,13 +128,11 @@ private:
                 return nullptr;
             }
             constExps->push_back(constExp);
-            if (self.tokenNow() != Token::RBRACK) {
+            if (self.tokenNow() != Token::RBRACK)
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
         }
 
         if (self.tokenNow() != Token::ASSIGN) {
@@ -225,13 +220,10 @@ private:
             }
             varDefs->push_back(varDef);
         }
-        if (self.tokenNow() != Token::SEMICN) {
+        if (self.tokenNow() != Token::SEMICN)
             MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-            self.index = initial_index;
-            return nullptr;
-        }
-
-        self.index++;
+        else
+            self.index++;
         return new MVarDecl(bType, varDefs);
     }
 
@@ -253,13 +245,11 @@ private:
                 return nullptr;
             }
             constExps->push_back(constExp);
-            if (self.tokenNow() != Token::RBRACK) {
+            if (self.tokenNow() != Token::RBRACK)
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
         }
 
         if (self.tokenNow() == Token::ASSIGN) {
@@ -345,13 +335,11 @@ private:
 
         MFuncFParams *funcFParams = self.getFuncFParams();
 
-        if (self.tokenNow() != Token::RPARENT) {
+        if (self.tokenNow() != Token::RPARENT)
             MExceptionManager::pushException(
                     new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-            self.index = initial_index;
-            return nullptr;
-        }
-        self.index++;
+        else
+            self.index++;
 
         MBlock *block = self.getBlock();
         if (block == nullptr) {
@@ -382,13 +370,11 @@ private:
         }
         self.index++;
 
-        if (self.tokenNow() != Token::RPARENT) {
+        if (self.tokenNow() != Token::RPARENT)
             MExceptionManager::pushException(
                     new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-            self.index = initial_index;
-            return nullptr;
-        }
-        self.index++;
+        else
+            self.index++;
 
         MBlock *block = self.getBlock();
         if (block == nullptr) {
@@ -453,13 +439,11 @@ private:
             auto constExps = new std::vector<MConstExp *>();
             self.index++;
 
-            if (self.tokenNow() != Token::RBRACK) { // 处理']'
+            if (self.tokenNow() != Token::RBRACK) // 处理']'
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
 
             MConstExp *constExp;
             while (self.tokenNow() == Token::LBRACK) {
@@ -472,13 +456,11 @@ private:
                 }
                 constExps->push_back(constExp);
 
-                if (self.tokenNow() != Token::RBRACK) {
+                if (self.tokenNow() != Token::RBRACK)
                     MExceptionManager::pushException(
                             new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
             }
             return new MFuncFParam(bType, ident, constExps);
         } else {
@@ -567,13 +549,11 @@ private:
                 return nullptr;
             }
             self.index++;
-            if (self.tokenNow() != Token::SEMICN) {
+            if (self.tokenNow() != Token::SEMICN)
                 MExceptionManager::pushException(
                         new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
             return new MLValStmt(lVal);
         } else {
             // 处理"LVal = Exp;"
@@ -582,13 +562,11 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
-            if (self.tokenNow() != Token::SEMICN) {
+            if (self.tokenNow() != Token::SEMICN)
                 MExceptionManager::pushException(
                         new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
             return new MLValStmt(lVal, exp);
         }
     }
@@ -600,12 +578,10 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-        if (self.tokenNow() != Token::SEMICN) {
+        if (self.tokenNow() != Token::SEMICN)
             MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-            self.index = initial_index;
-            return nullptr;
-        }
-        self.index++;
+        else
+            self.index++;
         return new MExpStmt(exp);
     }
 
@@ -661,13 +637,11 @@ private:
                     return nullptr;
                 }
 
-                if (self.tokenNow() != Token::RPARENT) {
+                if (self.tokenNow() != Token::RPARENT)
                     MExceptionManager::pushException(
                             new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
 
                 MStmt *ifStmt = self.getStmt();
                 if (ifStmt == nullptr) {
@@ -702,13 +676,11 @@ private:
                     return nullptr;
                 }
 
-                if (self.tokenNow() != Token::RPARENT) {
+                if (self.tokenNow() != Token::RPARENT)
                     MExceptionManager::pushException(
                             new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
 
                 MStmt *whileStmt = self.getStmt();
                 if (whileStmt == nullptr) {
@@ -721,30 +693,26 @@ private:
             case Token::BREAKTK: {
                 self.index++;
                 int lineNum = self.tokenList[self.index]->lineNum;
-                if (self.tokenNow() != Token::SEMICN) {
+                if (self.tokenNow() != Token::SEMICN)
                     MExceptionManager::pushException(
                             new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
                 return new MBreakStmt(lineNum);
             }
 
             case Token::CONTINUETK: {
                 self.index++;
                 int lineNum = self.tokenList[self.index]->lineNum;
-                if (self.tokenNow() != Token::SEMICN) {
+                if (self.tokenNow() != Token::SEMICN)
                     MExceptionManager::pushException(
                             new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
                 return new MContinueStmt(lineNum);
             }
 
-            case Token::RETURNTK:{
+            case Token::RETURNTK: {
                 self.index++;
                 int lineNum = self.tokenList[self.index]->lineNum;
                 MExp *exp;
@@ -757,13 +725,11 @@ private:
                         self.index = initial_index;
                         return nullptr;
                     }
-                    if (self.tokenNow() != Token::SEMICN) {
+                    if (self.tokenNow() != Token::SEMICN)
                         MExceptionManager::pushException(
                                 new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    self.index++;
+                    else
+                        self.index++;
                     return new MReturnStmt(exp, lineNum);
                 }
             }
@@ -786,8 +752,7 @@ private:
                 if (!formatString->checkLegal()) {
                     MExceptionManager::pushException(
                             new MIllegalCharInFormatStringException(self.tokenList[self.index]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
+
                 }
                 self.index++;
 
@@ -811,13 +776,11 @@ private:
                 }
                 self.index++;
 
-                if (self.tokenNow() != Token::SEMICN) {
+                if (self.tokenNow() != Token::SEMICN)
                     MExceptionManager::pushException(
                             new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
 
                 return new MPrintfStmt(formatString, printfExps, lineNum);
             }
@@ -828,13 +791,11 @@ private:
                     self.index = initial_index;
                     return nullptr;
                 }
-                if (self.tokenNow() != Token::SEMICN) {
+                if (self.tokenNow() != Token::SEMICN)
                     MExceptionManager::pushException(
                             new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
                 return new MExpStmt(exp);
             }
 
@@ -881,13 +842,11 @@ private:
             }
             exps->push_back(exp);
 
-            if (self.tokenNow() != Token::RBRACK) {
+            if (self.tokenNow() != Token::RBRACK)
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
         }
         return new MLVal(ident, exps);
     }
@@ -903,13 +862,11 @@ private:
                 return nullptr;
             }
 
-            if (self.tokenNow() != Token::RPARENT) {
+            if (self.tokenNow() != Token::RPARENT)
                 MExceptionManager::pushException(
                         new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                self.index = initial_index;
-                return nullptr;
-            }
-            self.index++;
+            else
+                self.index++;
             return new MExpPrimaryExp(exp);
         } else if (self.tokenNow() == Token::IDENFR) {
             MLVal *lVal = self.getLVal();
@@ -953,13 +910,11 @@ private:
 
                 MFuncRParams *funcRParams = self.getFuncRParams();
 
-                if (self.tokenNow() != Token::RPARENT) {
+                if (self.tokenNow() != Token::RPARENT)
                     MExceptionManager::pushException(
                             new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
+                else
+                    self.index++;
                 return new MFuncUnaryExp(ident, funcRParams);
             } else {
                 self.index--; //回到指向IDENFR的状态

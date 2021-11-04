@@ -3,7 +3,7 @@
 
 
 #include "../syntax_analysis/syntax_nodes.h"
-#include "MSymbolTableItem.h"
+#include "MSymbolTable.h"
 
 class SemanticAnalyzer {
 private:
@@ -12,7 +12,7 @@ private:
     MSymbolTable *currentTable;
 public:
     SemanticAnalyzer(MCompUnit *compUnit)
-            : compUnit(compUnit), globalTable(new MSymbolTable), currentTable(globalTable) {}
+            : compUnit(compUnit), globalTable(new MSymbolTable(false)), currentTable(globalTable) {}
 
     SemanticAnalyzer *analyze() {
         for (MDecl *decl : *(self.compUnit->decls)) {
@@ -28,7 +28,7 @@ public:
 private:
 
     void analyzeMainFuncDef(MMainFuncDef *mainFuncDef) {
-        MSymbolTable *mainFuncTable = new MSymbolTable(self.globalTable);
+        MSymbolTable *mainFuncTable = new MSymbolTable(self.globalTable, true);
 
         // 下面几条语句的顺序不能错
         // 先把main记录到符号表，再分析block
@@ -37,7 +37,7 @@ private:
                                              new MReturnType(new MFuncType(Token::INTTK)), mainFuncTable));
         self.globalTable->setChildScopeTable(mainFuncTable);
         self.currentTable = mainFuncTable;
-        self.analyzeBlock(mainFuncDef->block);
+        self.analyzeBlock(mainFuncDef->block, false, mainFuncTable);
 
     }
 
@@ -86,7 +86,7 @@ private:
 
 
         // 下面几句的顺序不能错
-        auto funcSymbolTable = new MSymbolTable();
+        auto funcSymbolTable = new MSymbolTable(false);
 
         self.currentTable->addSymbolItem(
                 new MFunctionSymbolTableItem(funcDef->ident->name, paramTypes->size(), paramTypes,
@@ -94,14 +94,14 @@ private:
         self.analyzeBlock(funcDef->block, funcSymbolTable);
     }
 
-    void analyzeBlock(MBlock *block, MSymbolTable *newTable = nullptr) {
+    void analyzeBlock(MBlock *block, bool isCyclicBlock = false, MSymbolTable *newTable = nullptr) {
         // newTable != nullptr, 就将分析出来的东西加入到newTable中
         // newTable == nullptr, 就新建一个表作为currentTable的子表
         MSymbolTable *preTable = self.currentTable;
         if (newTable != nullptr) {
             self.currentTable = newTable;
         } else {
-            self.currentTable = new MSymbolTable(self.currentTable);
+            self.currentTable = new MSymbolTable(self.currentTable, isCyclicBlock);
         }
 
         for (auto blockItem : *(block->blockItems)) {
@@ -112,63 +112,75 @@ private:
             }
         }
 
+        if (newTable == nullptr)
+            delete(self.currentTable);
         self.currentTable = preTable;
     }
 
-    void analyzeStmt(MStmt *stmt) {
-        // TODO 检查Stmt的语义
+    void analyzeStmt(MStmt *stmt, bool isCyclic = false) {
+        // isCyclic: 如果stmt是一个block，那么将这个block标记为isCyclic
         if (typeid(*stmt) == typeid(MLValStmt)) {
-            MLValStmt *pStmt = (MLValStmt *) stmt;
+            auto *pStmt = (MLValStmt *) stmt;
             if (self.isUndefined(pStmt->lVal->ident->name)) {
-                throw new MUndefinedIdentifierException(pStmt->lVal->ident->lineNum);
-            }
-            if (self.isConst(pStmt->lVal->ident->name)) {
-                throw new MChangingConstException(pStmt->lVal->ident->lineNum);
+                MExceptionManager::pushException(
+                        new MUndefinedIdentifierException(
+                                pStmt->lVal->ident->lineNum));
+            } else{
+                if (self.isConst(pStmt->lVal->ident->name)) {
+                    MExceptionManager::pushException(
+                            new MChangingConstException(pStmt->lVal->ident->lineNum));
+                }
             }
 
-            self.analyzeExp(pStmt->exp);
+            if (pStmt->exp != nullptr)
+                self.analyzeExp(pStmt->exp);
+            else {
+                // 说明是LVal = getint();
+                // TODO 这里要搞一下！
+            }
+
         } else if (typeid(*stmt) == typeid(MExpStmt)) {
-            MExpStmt *pStmt = (MExpStmt *) stmt;
+            auto *pStmt = (MExpStmt *) stmt;
             self.analyzeExp(pStmt->exp);
         } else if (typeid(*stmt) == typeid(MNullStmt)) {
             // Do nothing
 
         } else if (typeid(*stmt) == typeid(MBlockStmt)) {
-            MBlockStmt *pStmt = (MBlockStmt *) stmt;
-            self.analyzeBlock(pStmt->block);
+            auto *pStmt = (MBlockStmt *) stmt;
+            self.analyzeBlock(pStmt->block, isCyclic);
 
         } else if (typeid(*stmt) == typeid(MIfStmt)) {
-            MIfStmt *pStmt = (MIfStmt *) stmt;
+            auto *pStmt = (MIfStmt *) stmt;
             self.analyzeCond(pStmt->cond);
             self.analyzeStmt(pStmt->ifStmt);
             if (pStmt->elseStmt != nullptr)
                 self.analyzeStmt(pStmt->elseStmt);
 
         } else if (typeid(*stmt) == typeid(MWhileStmt)) {
-            MWhileStmt *pStmt = (MWhileStmt *) stmt;
+            auto *pStmt = (MWhileStmt *) stmt;
             self.analyzeCond(pStmt->cond);
-            self.analyzeStmt(pStmt->stmt);
+            self.analyzeStmt(pStmt->stmt, true);
 
         } else if (typeid(*stmt) == typeid(MBreakStmt)) {
-            MBreakStmt *pStmt = (MBreakStmt *) stmt;
+            auto *pStmt = (MBreakStmt *) stmt;
             if (!self.isInCyclicBlock())
                 MExceptionManager::pushException(
                         new MBreakStatementInAcyclicBlockException(pStmt->lineNum));
 
         } else if (typeid(*stmt) == typeid(MContinueStmt)) {
-            MContinueStmt *pStmt = (MContinueStmt *) stmt;
+            auto *pStmt = (MContinueStmt *) stmt;
             if (!self.isInCyclicBlock())
                 MExceptionManager::pushException(
                         new MBreakStatementInAcyclicBlockException(pStmt->lineNum));
 
         } else if (typeid(*stmt) == typeid(MReturnStmt)) {
-            MReturnStmt *pStmt = (MReturnStmt *) stmt;
+            auto *pStmt = (MReturnStmt *) stmt;
             if (!self.isInFunctionWithReturn())
                 MExceptionManager::pushException(
                         new MRedundantReturnStatementException(pStmt->lineNum));
 
         } else if (typeid(*stmt) == typeid(MPrintfStmt)) {
-            MPrintfStmt *pStmt = (MPrintfStmt *) stmt;
+            auto *pStmt = (MPrintfStmt *) stmt;
             self.analyzePrintfStmt(pStmt);
 
         } else {
@@ -203,11 +215,11 @@ private:
                     MPrimaryExp *primaryExp = ((MPrimaryExpUnaryExp *) unaryExp)->primaryExp;
 
                     if (typeid(*primaryExp) == typeid(MExpPrimaryExp)) {
-                        MExpPrimaryExp *expPrimaryExp = (MExpPrimaryExp *) primaryExp;
+                        auto *expPrimaryExp = (MExpPrimaryExp *) primaryExp;
                         self.analyzeExp(expPrimaryExp->exp);
 
                     } else if (typeid(*primaryExp) == typeid(MLValPrimaryExp)) {
-                        MLValPrimaryExp *lValPrimaryExp = (MLValPrimaryExp *) primaryExp;
+                        auto *lValPrimaryExp = (MLValPrimaryExp *) primaryExp;
                         if (self.isUndefined(lValPrimaryExp->lVal->ident->name))
                             MExceptionManager::pushException(
                                     new MUndefinedIdentifierException(
@@ -244,13 +256,13 @@ private:
                     new MParamNumNotMatchException(funcUnaryExp->ident->lineNum));
 
         int i = 0;
-        MExp* exp = nullptr;
-        MParamType* paramType = nullptr;
-        for (; i < funcUnaryExp->funcRParams->exps->size(); i++){
+        MExp *exp = nullptr;
+        MParamType *paramType = nullptr;
+        for (; i < funcUnaryExp->funcRParams->exps->size(); i++) {
             // 检查参数类型是否匹配
             exp = (*(funcUnaryExp->funcRParams->exps))[i];
             paramType = tableItem->paramTypes[i];
-            if (!self.expMatchParamType(exp, paramType)){
+            if (!self.expMatchParamType(exp, paramType)) {
                 MExceptionManager::pushException(
                         new MParamTypeNotMatchException(funcUnaryExp->ident->lineNum));
             }
@@ -259,32 +271,57 @@ private:
     }
 
     int valueOfConstExp(MConstExp *constExp) {
+        // TODO
         return 0;
     }
 
-    bool isRedefined(std::string name) {
+    bool isRedefined(std::string& name) {
+        for (auto table = self.currentTable; table != nullptr;
+             table = table->getFatherScopeTable()) {
 
+            if (table->contains(name))
+                return true;
+        }
         return false;
     }
 
-    bool isUndefined(std::string name) {
-        return false;
+    bool isUndefined(std::string& name) {
+        for (auto table = self.currentTable; table != nullptr;
+             table = table->getFatherScopeTable()) {
+
+            if (table->contains(name))
+                return false;
+        }
+        return true;
     }
 
-    bool isConst(std::string name) {
-        return false;
+    bool isConst(std::string& name) {
+        for (auto table = self.currentTable; table != nullptr;
+             table = table->getFatherScopeTable()) {
+
+            if (table->contains(name)) {
+                auto item = table->getTableItem(name);
+                if (typeid(*item) == typeid(MFunctionSymbolTableItem))
+                    throw "SemanticAnalyzer::isConst: 名字是函数名";
+                return ((MVariableSymbolTableItem*)item)->variableType->isConst;
+            }
+        }
+        throw "SemanticAnalyzer::isConst: 名字未定义";
     }
 
     bool isInCyclicBlock() {
-        return false;
+        return self.currentTable->isCyclicBlock();
     }
 
     bool isInFunctionWithReturn() {
-        return false;
+        auto funcItem = self.currentTable->getFatherTableItem();
+        if (funcItem == nullptr)
+            throw "SemanticAnalyzer::isInFunctionWithReturn";
+        return funcItem->returnType->type->type != Token::VOIDTK;
     }
 
-    bool expMatchParamType(MExp* exp, MParamType* paramType) {
-        return false;
+    bool expMatchParamType(MExp *exp, MParamType *paramType) {
+        return true;
     }
 
 };

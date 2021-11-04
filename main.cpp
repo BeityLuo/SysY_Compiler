@@ -37,6 +37,7 @@ int main(){
     MCompUnit* ast = syntax_analyzer.analyze();
     if (ast != nullptr) {
         ans = ast->toString();
+        std::cout << ans;
 
         SemanticAnalyzer semanticAnalyzer(syntax_analyzer.ast());
         semanticAnalyzer.analyze();

@@ -7,10 +7,10 @@
 #include <vector>
 #include <unordered_map>
 #include "../syntax_analysis/syntax_nodes.h"
-#include "MSymbolTable.h"
 
+class MSymbolTable;
 class MBaseType {
-protected:
+public:
     const bool isConst;
     const MType* type;
     std::vector<int> *consts;
@@ -83,14 +83,8 @@ public:
     MReturnType *returnType;
 
     MFunctionSymbolTableItem(std::string symbol, int paramNum,
-                                     std::vector<MParamType*> *paramTypes,
-                                     MReturnType *returnType, MSymbolTable *funcSymbolTable, unsigned int address = 0) :
-            MSymbolTableItem(symbol, false, address), paramNum(paramNum),
-            returnType(returnType), funcSymbolTable(funcSymbolTable) {
-        for (auto type : *paramTypes) {
-            self.paramTypes.push_back(type);
-        }
-    }
+                             std::vector<MParamType*> *paramTypes,
+                             MReturnType *returnType, MSymbolTable *funcSymbolTable, unsigned int address = 0);
 };
 
 #endif //BUAA_COMPILER_MSYMBOLTABLEITEM_H
