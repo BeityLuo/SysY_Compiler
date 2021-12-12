@@ -43,10 +43,14 @@ std::string MVarDecl::toString() {
 
 std::string MConstDef::toString() {
     std::string ans = self.ident->toString();
-    for (auto constExp : *(self.constExps)) {
-        ans += fixedToken2PairString(Token::LBRACK)
-               + constExp->toString()
-               + fixedToken2PairString(Token::RBRACK);
+//    for (auto constExp : *(self.constExps)) {
+//        ans += fixedToken2PairString(Token::LBRACK)
+//               + constExp->toString()
+//               + fixedToken2PairString(Token::RBRACK);
+//
+//    }
+    for (auto dim : *(self.dims)) {
+        ans += "<数组长度> " + std::to_string(dim) + "\n";
     }
     ans += fixedToken2PairString(Token::ASSIGN) + self.init->toString()
            + self.className();
@@ -56,10 +60,13 @@ std::string MConstDef::toString() {
 
 std::string MVarDef::toString() {
     std::string ans = self.ident->toString();
-    for (auto constExp : *(self.constExps)) {
-        ans += fixedToken2PairString(Token::LBRACK)
-               + constExp->toString()
-               + fixedToken2PairString(Token::RBRACK);
+//    for (auto constExp : *(self.constExps)) {
+//        ans += fixedToken2PairString(Token::LBRACK)
+//               + constExp->toString()
+//               + fixedToken2PairString(Token::RBRACK);
+//    }
+    for (auto dim : *(self.dims)) {
+        ans += "<数组长度> " + std::to_string(dim) + "\n";
     }
     if (self.init != nullptr)
         ans += fixedToken2PairString(Token::ASSIGN) + self.init->toString();
@@ -136,13 +143,16 @@ std::string MFuncFParams::toString() {
 
 std::string MFuncFParam::toString() {
     std::string ans = self.bType->toString() + self.ident->toString();
-    if (self.constExps != nullptr) {
-        ans += fixedToken2PairString(Token::LBRACK) + fixedToken2PairString(Token::RBRACK);
-        for (auto constExp : *(self.constExps)) {
-            ans += fixedToken2PairString(Token::LBRACK)
-                   + constExp->toString()
-                   + fixedToken2PairString(Token::RBRACK);
-        }
+//    if (self.constExps != nullptr) {
+//        ans += fixedToken2PairString(Token::LBRACK) + fixedToken2PairString(Token::RBRACK);
+//        for (auto constExp : *(self.constExps)) {
+//            ans += fixedToken2PairString(Token::LBRACK)
+//                   + constExp->toString()
+//                   + fixedToken2PairString(Token::RBRACK);
+//        }
+//    }
+    for (auto dim : *(self.dims)) {
+        ans += "<数组长度> " + std::to_string(dim) + "\n";
     }
     ans += self.className();
     return ans;

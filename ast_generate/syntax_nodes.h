@@ -13,15 +13,51 @@
 
 template<class T>
 void pushVector(std::vector<T> *v1, std::vector<T> *v2) {
-    for (auto vv : *v2) {
+    for (auto vv: *v2) {
         v1->push_back(vv);
     }
 }
+
+enum MSyntaxNodeTypeID{
+    IDENT, COMP_UNIT, B_TYPE, FUNC_TYPE, CONST_EXP_CONST_INITVAL,
+    ARRAY_CONST_INITVAL, EXP_INITVAL, ARRAY_INITVAL, CONST_DEF,
+    VAR_DEF, CONST_DECL, VAR_DECL, FUNC_F_PARAMS, FUNC_F_PARAM,
+    FUNC_DEF, MAIN_FUNC_DEF, BLOCK, DECL_BLOCK_ITEM, STMT_BLOCK_ITEM,
+    LVAL_STMT, EXP_STMT, NULL_STMT, IF_STMT, WHILE_STMT, BLOCK_STMT,
+    BREAK_STMT, CONTINUE_STMT, RETURN_STMT, PRINTF_STMT, EXP, CONST_EXP,
+    COND, LVAL, EXP_PRIMARY_EXP, LVAL_PRIMARY_EXP, NUMBER_PRIMARY_EXP,
+    NUMBER, PRIMARY_EXP_UNARY_EXP, FUNC_UNARY_EXP, UNARY_EXP_UNARY_EXP,
+    UNARY_OP, FUNC_R_PARAMS, MUL_EXP, ADD_EXP, REL_EXP, EQ_EXP, LAND_EXP,
+    LOR_EXP, INT_CONST, FORMAT_STRING
+
+
+};
 
 class MSyntaxNode {
 public:
     virtual std::string toString() = 0; // 全部都带有后缀的'\n'
     virtual std::string className() = 0;
+    virtual int getTypeID()  = 0;
+};
+
+class MIdent : public MSyntaxNode {
+public:
+    std::string name;
+    int lineNum;
+public:
+    explicit MIdent(std::string name, int lineNum) : name(std::move(name)), lineNum(lineNum) {}
+
+    std::string toString() override {
+        return token2string(Token::IDENFR) + " " + self.name + "\n";
+    }
+
+    std::string className() override {
+        return "<Ident>\n";
+    }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::IDENT;
+    }
 };
 
 class MCompUnit : public MSyntaxNode {
@@ -40,6 +76,9 @@ public:
 
     std::string className() override {
         return "<CompUnit>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::COMP_UNIT;
     }
 };
 
@@ -63,6 +102,9 @@ public:
     std::string toString() override {
         return fixedToken2PairString(Token::INTTK);
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::B_TYPE;
+    }
 };
 
 class MFuncType : public MType {
@@ -79,6 +121,9 @@ public:
 
     std::string className() override {
         return "<FuncType>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_TYPE;
     }
 };
 
@@ -98,23 +143,28 @@ class MConstExpConstInitVal : public MConstInitVal {
 public:
     MConstExp *constExp;
 public:
-    explicit MConstExpConstInitVal(MConstExp *constExp) : constExp(constExp) {}
+    explicit MConstExpConstInitVal(MConstExp *constExp)
+            : constExp(constExp){}
 
     std::string toString() override;
-
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::CONST_EXP_CONST_INITVAL;
+    }
 };
 
 class MArrayConstInitVal : public MConstInitVal {
 public:
     std::vector<MConstInitVal *> *constInitVals;
 public:
-    explicit MArrayConstInitVal(std::vector<MConstInitVal *> *constInitVals) :
+    MArrayConstInitVal(std::vector<MConstInitVal *> *constInitVals) :
             constInitVals(new std::vector<MConstInitVal *>()) {
         pushVector(self.constInitVals, constInitVals);
     }
 
     std::string toString() override;
-
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::ARRAY_CONST_INITVAL;
+    }
 };
 
 class MInitVal : public MVariableInit {
@@ -131,7 +181,9 @@ public:
     explicit MExpInitVal(MExp *exp) : exp(exp) {}
 
     std::string toString() override;
-
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::EXP_INITVAL;
+    }
 };
 
 class MArrayInitVal : public MInitVal {
@@ -143,26 +195,31 @@ public:
     }
 
     std::string toString() override;
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::ARRAY_INITVAL;
+    }
 };
 
 class MDef : public MSyntaxNode {
 public:
     MIdent *ident;
-    std::vector<MConstExp *> *constExps;
+    std::vector<int> *dims;
     MVariableInit *init;
 public:
-    MDef(MIdent *ident, std::vector<MConstExp *> *constExps, MVariableInit *init)
-            : ident(ident), init(init), constExps(new std::vector<MConstExp *>()) {
-        pushVector(self.constExps, constExps);
+    MDef(MIdent *ident, std::vector<int> *dims, MVariableInit *init)
+            : ident(ident), init(init), dims(new std::vector<int>()) {
+        pushVector(self.dims, dims);
     }
 
-    MDef() : ident(nullptr), constExps(new std::vector<MConstExp *>()), init(nullptr) {}
+    MDef() : ident(nullptr), dims(new std::vector<int>()), init(nullptr) {}
 };
 
 class MConstDef : public MDef {
 
 public:
-    MConstDef(MIdent *ident, std::vector<MConstExp *> *constExps, MConstInitVal *constInitVal) {
+    MConstDef(MIdent *ident, std::vector<int> *dims, MConstInitVal *constInitVal)
+            : MDef(ident, dims, constInitVal) {
         self.ident = ident;
         self.init = constInitVal;
     }
@@ -173,12 +230,16 @@ public:
 
     std::string toString() override;
 
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::CONST_DEF;
+    }
+
 };
 
 class MVarDef : public MDef {
 public:
-    MVarDef(MIdent *ident, std::vector<MConstExp *> *constExps, MInitVal *initVal = nullptr)
-            : MDef(ident, constExps, initVal) {
+    MVarDef(MIdent *ident, std::vector<int> *dims, MInitVal *initVal = nullptr)
+            : MDef(ident, dims, initVal) {
         self.ident = ident;
         self.init = initVal;
     }
@@ -187,6 +248,10 @@ public:
 
     std::string className() override {
         return "<VarDef>\n";
+    }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::VAR_DEF;
     }
 
 };
@@ -205,7 +270,7 @@ class MConstDecl : public MDecl {
 public:
     MConstDecl(MBType *type, std::vector<MConstDef *> *constDefs) {
         self.type = type;
-        for (auto constDef : *constDefs) {
+        for (auto constDef: *constDefs) {
             self.defs->push_back(constDef);
         }
     }
@@ -215,7 +280,9 @@ public:
     std::string className() override {
         return "<ConstDecl>\n";
     }
-
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::CONST_DECL;
+    }
 
 };
 
@@ -224,7 +291,7 @@ public:
 
     MVarDecl(MBType *type, std::vector<MVarDef *> *varDefs) {
         self.type = type;
-        for (auto varDef : *varDefs) {
+        for (auto varDef: *varDefs) {
             self.defs->push_back(varDef);
         }
     }
@@ -234,7 +301,53 @@ public:
     std::string className() override {
         return "<VarDecl>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::VAR_DECL;
+    }
+};
 
+class MFuncFParams : public MSyntaxNode {
+public:
+    std::vector<MFuncFParam *> *funcFParams;
+public:
+    explicit MFuncFParams(std::vector<MFuncFParam *> *funcFParams)
+        : funcFParams(new std::vector<MFuncFParam *>()) {
+        if (funcFParams != nullptr)
+            pushVector(self.funcFParams, funcFParams);
+    }
+
+    std::string toString() override;
+
+    std::string className() override {
+        return "<FuncFParams>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_F_PARAMS;
+    }
+};
+
+class MFuncFParam : public MSyntaxNode {
+public:
+    MBType *bType;
+    MIdent *ident;
+    std::vector<int> *dims;
+    bool isArray;
+public:
+    MFuncFParam(MBType *bType, MIdent *ident, std::vector<int> *dims,
+                bool isArray = false) :
+            bType(bType), ident(ident), dims(new std::vector<int>()), isArray(isArray) {
+        if (dims != nullptr)
+            pushVector(self.dims, dims);
+    }
+
+    std::string toString() override;
+
+    std::string className() override {
+        return "<FuncFParam>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_F_PARAM;
+    }
 };
 
 class MFuncDef : public MSyntaxNode {
@@ -252,54 +365,28 @@ public:
     std::string className() override {
         return "<FuncDef>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_DEF;
+    }
 };
 
-class MMainFuncDef : public MSyntaxNode {
+class MMainFuncDef : public MFuncDef {
 public:
-    MBlock *block;
 public:
-    explicit MMainFuncDef(MBlock *block) : block(block) {}
+    explicit MMainFuncDef(MBlock *block, int lineNum) :
+            MFuncDef(new MFuncType(Token::INTTK), new MIdent("main", lineNum),
+                     new MFuncFParams(new std::vector<MFuncFParam *>()), block) {}
 
     std::string toString() override;
 
     std::string className() override {
         return "<MainFuncDef>\n";
     }
-};
-
-
-class MFuncFParams : public MSyntaxNode {
-public:
-    std::vector<MFuncFParam *> *funcFParams;
-public:
-    explicit MFuncFParams(std::vector<MFuncFParam *> *funcFParams) : funcFParams(new std::vector<MFuncFParam *>()) {
-        pushVector(self.funcFParams, funcFParams);
-    }
-
-    std::string toString() override;
-
-    std::string className() override {
-        return "<FuncFParams>\n";
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::MAIN_FUNC_DEF;
     }
 };
 
-class MFuncFParam : public MSyntaxNode {
-public:
-    MBType *bType;
-    MIdent *ident;
-    std::vector<MConstExp *> *constExps;
-public:
-    MFuncFParam(MBType *bType, MIdent *ident, std::vector<MConstExp *> *constExps) :
-            bType(bType), ident(ident), constExps(new std::vector<MConstExp *>()) {
-        pushVector(self.constExps, constExps);
-    }
-
-    std::string toString() override;
-
-    std::string className() override {
-        return "<FuncFParam>\n";
-    }
-};
 
 class MBlock : public MSyntaxNode {
 public:
@@ -308,14 +395,18 @@ public:
 public:
 
     MBlock(std::vector<MBlockItem *> *blockItems, int lineNum)
-    : blockItems(new std::vector<MBlockItem *>()), lineNum(lineNum) {
-        pushVector(self.blockItems, blockItems);
+            : blockItems(new std::vector<MBlockItem *>()), lineNum(lineNum) {
+        if (blockItems != nullptr)
+            pushVector(self.blockItems, blockItems);
     }
 
     std::string toString() override;
 
     std::string className() override {
         return "<Block>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::BLOCK;
     }
 };
 
@@ -325,6 +416,7 @@ public:
     std::string className() override {
         return "<BlockItem>\n";
     }
+
 };
 
 class MDeclBlockItem : public MBlockItem {
@@ -334,6 +426,10 @@ public:
     explicit MDeclBlockItem(MDecl *decl) : decl(decl) {}
 
     std::string toString() override;
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::DECL_BLOCK_ITEM;
+    }
 };
 
 class MStmtBlockItem : public MBlockItem {
@@ -343,6 +439,10 @@ public:
     explicit MStmtBlockItem(MStmt *stmt) : stmt(stmt) {}
 
     std::string toString() override;
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::STMT_BLOCK_ITEM;
+    }
 };
 
 class MStmt : public MSyntaxNode {
@@ -362,6 +462,10 @@ public:
     MLValStmt(MLVal *lVal, MExp *exp) : lVal(lVal), exp(exp) {}
 
     std::string toString() override;
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::LVAL_STMT;
+    }
 };
 
 class MExpStmt : public MStmt {
@@ -371,6 +475,9 @@ public:
     explicit MExpStmt(MExp *exp) : exp(exp) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::EXP_STMT;
+    }
 };
 
 class MNullStmt : public MStmt {
@@ -378,6 +485,9 @@ public:
     MNullStmt() = default;
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::NULL_STMT;
+    }
 };
 
 class MBlockStmt : public MStmt {
@@ -387,6 +497,9 @@ public:
     explicit MBlockStmt(MBlock *block) : block(block) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::BLOCK_STMT;
+    }
 };
 
 class MIfStmt : public MStmt {
@@ -400,6 +513,9 @@ public:
     MIfStmt(MCond *cond, MStmt *ifStmt) : cond(cond), ifStmt(ifStmt), elseStmt(nullptr) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::IF_STMT;
+    }
 };
 
 class MWhileStmt : public MStmt {
@@ -410,6 +526,9 @@ public:
     MWhileStmt(MCond *cond, MStmt *stmt) : cond(cond), stmt(stmt) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::WHILE_STMT;
+    }
 };
 
 class MBreakStmt : public MStmt {
@@ -417,7 +536,11 @@ public:
     int lineNum;
 public:
     MBreakStmt(int lineNum) : lineNum(lineNum) {}
+
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::BREAK_STMT;
+    }
 };
 
 class MContinueStmt : public MStmt {
@@ -425,7 +548,11 @@ public:
     int lineNum;
 public:
     MContinueStmt(int lineNum) : lineNum(lineNum) {}
+
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::CONTINUE_STMT;
+    }
 };
 
 class MReturnStmt : public MStmt {
@@ -438,6 +565,9 @@ public:
     MReturnStmt() : exp(nullptr) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::RETURN_STMT;
+    }
 };
 
 class MPrintfStmt : public MStmt {
@@ -448,10 +578,14 @@ public:
 public:
     MPrintfStmt(MFormatString *formatString, std::vector<MExp *> *exps, int lineNum)
             : formatString(formatString), exps(new std::vector<MExp *>()), lineNum(lineNum) {
-        pushVector(self.exps, exps);
+        if (exps != nullptr)
+            pushVector(self.exps, exps);
     }
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::PRINTF_STMT;
+    }
 };
 
 class MExp : public MSyntaxNode {
@@ -465,6 +599,9 @@ public:
     std::string className() override {
         return "<Exp>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::EXP;
+    }
 };
 
 class MConstExp : public MSyntaxNode {
@@ -477,6 +614,9 @@ public:
 
     std::string className() override {
         return "<ConstExp>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::CONST_EXP;
     }
 };
 
@@ -492,6 +632,9 @@ public:
     std::string className() override {
         return "<Cond>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::COND;
+    }
 };
 
 class MLVal : public MSyntaxNode {
@@ -501,13 +644,17 @@ public:
 public:
     MLVal(MIdent *ident, std::vector<MExp *> *exps)
             : ident(ident), exps(new std::vector<MExp *>()) {
-        pushVector(self.exps, exps);
+        if (exps != nullptr)
+            pushVector(self.exps, exps);
     }
 
     std::string toString() override;
 
     std::string className() override {
         return "<LVal>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::LVAL;
     }
 };
 
@@ -525,6 +672,9 @@ public:
     explicit MExpPrimaryExp(MExp *exp) : exp(exp) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::EXP_PRIMARY_EXP;
+    }
 };
 
 class MLValPrimaryExp : public MPrimaryExp {
@@ -534,6 +684,9 @@ public:
     explicit MLValPrimaryExp(MLVal *lVal) : lVal(lVal) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::LVAL_PRIMARY_EXP;
+    }
 };
 
 class MNumberPrimaryExp : public MPrimaryExp {
@@ -543,6 +696,9 @@ public:
     explicit MNumberPrimaryExp(MNumber *number) : number(number) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::NUMBER_PRIMARY_EXP;
+    }
 };
 
 class MNumber : public MSyntaxNode {
@@ -556,6 +712,9 @@ public:
     std::string className() override {
         return "<Number>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::NUMBER;
+    }
 };
 
 class MUnaryExp : public MSyntaxNode {
@@ -563,6 +722,7 @@ public:
     std::string className() override {
         return "<UnaryExp>\n";
     }
+
 };
 
 class MPrimaryExpUnaryExp : public MUnaryExp {
@@ -572,6 +732,9 @@ public:
     explicit MPrimaryExpUnaryExp(MPrimaryExp *primaryExp) : primaryExp(primaryExp) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::PRIMARY_EXP_UNARY_EXP;
+    }
 };
 
 class MFuncUnaryExp : public MUnaryExp {
@@ -583,6 +746,9 @@ public:
             : ident(ident), funcRParams(funcRParams) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_UNARY_EXP;
+    }
 };
 
 class MUnaryExpUnaryExp : public MUnaryExp {
@@ -594,6 +760,9 @@ public:
             : unaryOp(unaryOp), unaryExp(unaryExp) {}
 
     std::string toString() override;
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::UNARY_EXP_UNARY_EXP;
+    }
 };
 
 class MUnaryOp : public MSyntaxNode {
@@ -611,7 +780,9 @@ public:
     std::string className() override {
         return "<UnaryOp>\n";
     }
-
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::UNARY_OP;
+    }
 };
 
 class MFuncRParams : public MSyntaxNode {
@@ -627,6 +798,9 @@ public:
     std::string className() override {
         return "<FuncRParams>\n";
     }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FUNC_R_PARAMS;
+    }
 };
 
 class MMulExp : public MSyntaxNode {
@@ -641,8 +815,8 @@ public:
             throw "In MMulExp's constructor: size of unaryExps ans ops not match";
         }
         pushVector(self.unaryExps, unaryExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::MULT && op != Token::DIV && op != Token::MOD) {
                 throw "In MMulExp's constructor: wong para: op = " + token2string(op);
             }
@@ -653,6 +827,9 @@ public:
 
     std::string className() override {
         return "<MulExp>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::MUL_EXP;
     }
 };
 
@@ -669,8 +846,8 @@ public:
             throw "In MAddExp's constructor: size of mulExps ans ops not match";
         }
         pushVector(self.mulExps, mulExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::PLUS && op != Token::MINU) {
                 throw "In MAddExp's constructor: wong para: op = " + token2string(op);
             }
@@ -681,6 +858,9 @@ public:
 
     std::string className() override {
         return "<AddExp>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::ADD_EXP;
     }
 };
 
@@ -695,8 +875,8 @@ public:
             throw "In MAddExp's constructor: size of addExps ans ops not match";
         }
         pushVector(self.addExps, addExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::LSS && op != Token::LEQ
                 && op != Token::GRE && op != Token::GEQ) {
                 throw "In MAddExp's constructor: wong para: op = " + token2string(op);
@@ -708,6 +888,9 @@ public:
 
     std::string className() override {
         return "<RelExp>\n";
+    }
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::REL_EXP;
     }
 };
 
@@ -723,8 +906,8 @@ public:
             throw "In MEqExp's constructor: size of relExps ans ops not match";
         }
         pushVector(self.relExps, relExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::EQL && op != Token::NEQ) {
                 throw "In MEqExp's constructor: wong para: op = " + token2string(op);
             }
@@ -735,6 +918,10 @@ public:
 
     std::string className() override {
         return "<EqExp>\n";
+    }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::EQ_EXP;
     }
 };
 
@@ -751,8 +938,8 @@ public:
             throw "In MLAndExp's constructor: size of eqExps ans ops not match";
         }
         pushVector(self.eqExps, eqExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::AND) {
                 throw "In MLAndExp's constructor: wong para: op = " + token2string(op);
             }
@@ -763,6 +950,10 @@ public:
 
     std::string className() override {
         return "<LAndExp>\n";
+    }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::LAND_EXP;
     }
 };
 
@@ -778,8 +969,8 @@ public:
             throw "In MLOrExp's constructor: size of lAndExps ans ops not match";
         }
         pushVector(self.lAndExps, lAndExps);
-        pushVector(self.ops, self.ops);
-        for (Token op : *(self.ops)) {
+        pushVector(self.ops, ops);
+        for (Token op: *(self.ops)) {
             if (op != Token::OR) {
                 throw "In MLOrExp's constructor: wong para: op = " + token2string(op);
             }
@@ -791,23 +982,11 @@ public:
     std::string className() override {
         return "<LOrExp>\n";
     }
-};
-
-class MIdent : public MSyntaxNode {
-public:
-    std::string name;
-    int lineNum;
-public:
-    explicit MIdent(std::string name, int lineNum) : name(std::move(name)), lineNum(lineNum){}
-
-    std::string toString() override {
-        return token2string(Token::IDENFR) + " " + self.name + "\n";
-    }
-
-    std::string className() override {
-        return "<Ident>\n";
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::LOR_EXP;
     }
 };
+
 
 class MIntConst : public MSyntaxNode {
 public:
@@ -822,6 +1001,10 @@ public:
     std::string className() override {
         return "<IntConst>\n";
     }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::INT_CONST;
+    }
 };
 
 class MFormatString : public MSyntaxNode {
@@ -831,12 +1014,12 @@ public:
     bool isLegal;
 public:
     explicit MFormatString(std::string formatString)
-    : formatString(std::move(formatString)), formatCharNum(0) {
+            : formatString(std::move(formatString)), formatCharNum(0) {
         // 只允许 ' ', '!', '%d', '\n'出现
         char c;
         int len = self.formatString.size();
         if (len < 2 || self.formatString[0] != '"' ||
-        self.formatString[len - 1] != '"') {
+            self.formatString[len - 1] != '"') {
             self.isLegal = false;
             return;
         }
@@ -870,6 +1053,10 @@ public:
 
     std::string className() override {
         return "<FormatString>\n";
+    }
+
+    int getTypeID() override {
+        return MSyntaxNodeTypeID::FORMAT_STRING;
     }
 
     bool checkLegal() {

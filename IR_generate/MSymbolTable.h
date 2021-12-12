@@ -15,20 +15,28 @@ private:
     MSymbolTable *fatherScopeTable;
     MFunctionSymbolTableItem *fatherTableItem;
     bool isCyclic;
+    int scopeLevel;
 
 public:
     MSymbolTable(bool isCyclic)
             : childScopeTable(nullptr), fatherScopeTable(nullptr),
-              fatherTableItem(nullptr), isCyclic(isCyclic) {}
+              fatherTableItem(nullptr), isCyclic(isCyclic), scopeLevel(0) {}
 
-    MSymbolTable(MSymbolTable *fatherScopeTable, bool isCyclic)
+    MSymbolTable()
+            : childScopeTable(nullptr), fatherScopeTable(nullptr),
+              fatherTableItem(nullptr), isCyclic(false), scopeLevel(0) {}
+
+    MSymbolTable(MSymbolTable *fatherScopeTable)
             : childScopeTable(nullptr), fatherScopeTable(fatherScopeTable),
-              fatherTableItem(nullptr), isCyclic(isCyclic) {}
+              fatherTableItem(nullptr), isCyclic(isCyclic) {
+        if (fatherScopeTable != nullptr) {
+            self.scopeLevel = fatherScopeTable->scopeLevel + 1;
+        }
+    }
 
     ~MSymbolTable() {
         if (self.fatherScopeTable != nullptr)
             self.fatherScopeTable->setChildScopeTable(nullptr);
-
         for (auto pair : self.table) {
             delete(pair.second);
         }
@@ -37,13 +45,10 @@ public:
     void addSymbolItem(MSymbolTableItem *symbolTableItem);
 
     bool contains(std::string &name) {
-        return self.table[name] != nullptr;
+        return self.table.find(name) != self.table.end();
     }
 
     void setChildScopeTable(MSymbolTable *symbolTable) {
-        if (self.childScopeTable != nullptr) {
-            delete (self.childScopeTable);
-        }
         self.childScopeTable = symbolTable;
     }
 
@@ -55,7 +60,7 @@ public:
         return self.childScopeTable;
     }
 
-    MSymbolTableItem *getTableItem(std::string name) {
+    MSymbolTableItem *getTableItem(const std::string& name) {
         return self.table[name];
     }
 
@@ -69,6 +74,10 @@ public:
 
     bool isCyclicBlock() {
         return self.isCyclic;
+    }
+
+    int getScopeLevel() {
+        return self.scopeLevel;
     }
 
 };

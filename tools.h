@@ -1,7 +1,0 @@
-#ifndef BUAA_COMPILER_TOOLS_H
-#define BUAA_COMPILER_TOOLS_H
-
-
-
-
-#endif //BUAA_COMPILER_TOOLS_H

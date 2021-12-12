@@ -3,6 +3,7 @@
 #include "syntax_nodes.h"
 #include "syntax_exceptions.h"
 #include "../exception_management/MExceptionManager.h"
+#include "../IR_generate/IRGenerator.h"
 
 #define self (*this)
 
@@ -11,13 +12,37 @@
 
 // $$$$$$$$$$$$$$$$$$$$$ 分析过程一概不考虑长度不够导致vector越界   $$$$$$$$$$$$$$$$$$$$$$$$$$$
 // 分析过程保证
-class SyntaxAnalyzer {
+class ASTGenerator {
 private:
+    IRGenerator *irGenerator;
+    MSymbolTable *globalTable;
+    MSymbolTable *currentTable;
     std::vector<TokenLexemePair *> tokenList;
     int index;
     MCompUnit *compUnit;
 
     std::vector<ComponentNotFoundException *> exceptionStack; //异常栈
+    ASTGenerator() {}
+
+public:
+
+    explicit ASTGenerator(std::vector<TokenLexemePair *> &tokenList) :
+            tokenList(tokenList), index(0) {}
+
+    ASTGenerator(std::vector<TokenLexemePair *> &tokenList,
+                 MSymbolTable *globalTable, IRGenerator *irGenerator) :
+            tokenList(tokenList), index(0), globalTable(globalTable), currentTable(globalTable),
+            irGenerator(irGenerator) {}
+
+    MCompUnit *analyze() {
+        return self.getCompUnit();
+    }
+
+    MCompUnit *ast() {
+        return self.compUnit;
+    }
+
+private:
 
     Token tokenNow() { return self.tokenList[self.index]->token; }
 
@@ -29,11 +54,16 @@ private:
     MCompUnit *getCompUnit() {
         auto decls = new std::vector<MDecl *>();
         MDecl *decl;
-        while ((decl = self.getDecl()) != nullptr) decls->push_back(decl);
+
+        while ((decl = self.getDecl()) != nullptr) {
+            decls->push_back(decl);
+        }
 
         auto funcs = new std::vector<MFuncDef *>();
         MFuncDef *funcDef;
-        while ((funcDef = self.getFuncDef()) != nullptr) funcs->push_back(funcDef);
+        while ((funcDef = self.getFuncDef()) != nullptr) {
+            funcs->push_back(funcDef);
+        }
 
         MMainFuncDef *mainFuncDef = self.getMainFuncDef();
         if (mainFuncDef == nullptr) {
@@ -47,13 +77,7 @@ private:
         if (index != self.tokenList.size()) throw LogException("There are something after MainFuncDef");
         self.compUnit = new MCompUnit(decls, funcs, mainFuncDef);
         return self.compUnit;
-        ////////////////////////////////////
-        ////////////////////////////////////
-        ////////////////////////////////////
-        //////////还没处理异常栈/////////////
-        ////////////////////////////////////
-        ////////////////////////////////////
-        ////////////////////////////////////
+
 
     }
 
@@ -78,12 +102,17 @@ private:
             self.index = initial_index;
             return nullptr;
         }
+
         auto constDefs = new std::vector<MConstDef *>();
         MConstDef *constDef = self.getConstDef();
         if (constDef == nullptr) {
             self.index = initial_index;
             return nullptr;
         }
+
+        self.irGenerator->addVar2Table(
+                bType, constDef->dims, constDef->ident->name, true,
+                constDef->init, constDef->ident->lineNum);
         constDefs->push_back(constDef);
         while (self.tokenNow() == Token::COMMA) {
             self.index++;
@@ -93,6 +122,9 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
+            self.irGenerator->addVar2Table(
+                    bType, constDef->dims, constDef->ident->name, true,
+                    constDef->init, constDef->ident->lineNum);
             constDefs->push_back(constDef);
         }
         if (self.tokenNow() != Token::SEMICN)
@@ -119,7 +151,8 @@ private:
         auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
-        auto constExps = new std::vector<MConstExp *>();
+        // auto constExps = new std::vector<MConstExp *>();
+        auto dims = new std::vector<int>();
         while (self.tokenNow() == Token::LBRACK) {
             self.index++;
             MConstExp *constExp = self.getConstExp();
@@ -127,13 +160,16 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
-            constExps->push_back(constExp);
+            dims->push_back(self.irGenerator->constExp2int(constExp));
             if (self.tokenNow() != Token::RBRACK)
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
             else
                 self.index++;
         }
+
+        // 计算下标的值
+
 
         if (self.tokenNow() != Token::ASSIGN) {
             self.index = initial_index;
@@ -147,7 +183,7 @@ private:
             return nullptr;
         }
 
-        return new MConstDef(ident, constExps, constInitVal);
+        return new MConstDef(ident, dims, constInitVal);
     }
 
     MConstInitVal *getConstInitVal() {
@@ -166,8 +202,9 @@ private:
                 constInitVals->push_back(constInitVal);
             } else {
                 // 说明是ConstInitVal -> {}的情况
-                self.index++;
-                return new MArrayConstInitVal(constInitVals);
+                // 理论上不会出现这种情况
+                self.index = initial_index;
+                return nullptr;
             }
 
             while (self.tokenNow() == Token::COMMA) {
@@ -186,6 +223,7 @@ private:
                 return nullptr;
             }
             self.index++;
+
             return new MArrayConstInitVal(constInitVals);
         } else {
             MConstExp *constExp = self.getConstExp();
@@ -210,6 +248,14 @@ private:
             self.index = initial_index;
             return nullptr;
         }
+        if (self.tokenNow() == Token::LPARENT) {
+            // 进入这里说明是函数定义不是变量定义
+            self.index = initial_index;
+            return nullptr;
+        }
+        // 包括了初始化过程
+        self.irGenerator->addVar2Table(bType, varDef->dims, varDef->ident->name,
+                                       false, varDef->init, varDef->ident->lineNum);
         varDefs->push_back(varDef);
         while (self.tokenNow() == Token::COMMA) {
             self.index++;
@@ -218,10 +264,15 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
+            self.irGenerator->addVar2Table(
+                    bType, varDef->dims, varDef->ident->name, false,
+                    varDef->init, varDef->ident->lineNum);
             varDefs->push_back(varDef);
         }
         if (self.tokenNow() != Token::SEMICN)
-            MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+            MExceptionManager::pushException(
+                    new MMissingSemicolonException(
+                            self.tokenList[self.index - 1]->lineNum));
         else
             self.index++;
         return new MVarDecl(bType, varDefs);
@@ -236,7 +287,7 @@ private:
         auto *ident = new MIdent(self.tokenList[self.index]->lexeme, self.tokenList[self.index]->lineNum);
         self.index++;
 
-        auto constExps = new std::vector<MConstExp *>();
+        auto dims = new std::vector<int>();
         while (self.tokenNow() == Token::LBRACK) {
             self.index++;
             MConstExp *constExp = self.getConstExp();
@@ -244,7 +295,7 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
-            constExps->push_back(constExp);
+            dims->push_back(self.irGenerator->constExp2int(constExp));
             if (self.tokenNow() != Token::RBRACK)
                 MExceptionManager::pushException(
                         new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
@@ -259,9 +310,9 @@ private:
                 self.index = initial_index;
                 return nullptr;
             }
-            return new MVarDef(ident, constExps, initVal);
+            return new MVarDef(ident, dims, initVal);
         } else {
-            return new MVarDef(ident, constExps);
+            return new MVarDef(ident, dims);
         }
     }
 
@@ -281,8 +332,9 @@ private:
                 initVals->push_back(initVal);
             } else {
                 // 说明是ConstInitVal -> {}的情况
-                self.index++;
-                return new MArrayInitVal(initVals);
+                // 理论上不会出现这种情况
+                self.index = initial_index;
+                return nullptr;
             }
 
             while (self.tokenNow() == Token::COMMA) {
@@ -334,6 +386,7 @@ private:
         self.index++;
 
         MFuncFParams *funcFParams = self.getFuncFParams();
+        self.irGenerator->addFunc2Table(funcType, ident->name, funcFParams, ident->lineNum);
 
         if (self.tokenNow() != Token::RPARENT)
             MExceptionManager::pushException(
@@ -341,7 +394,14 @@ private:
         else
             self.index++;
 
-        MBlock *block = self.getBlock();
+        self.irGenerator->createTable(ident->name);
+        self.irGenerator->initParams(ident->name);
+        MBlock *block = self.getBlock("", "");
+        // 如果是void类型的函数，给他加一个return语句
+        if (funcType->type == Token::VOIDTK) {
+            self.irGenerator->addReturn();
+        }
+        self.irGenerator->backTable(false);
         if (block == nullptr) {
             self.index = initial_index;
             return nullptr;
@@ -362,6 +422,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
+        int lineNum = self.tokenList[self.index]->lineNum;
         self.index++;
 
         if (self.tokenNow() != Token::LPARENT) {
@@ -369,20 +430,26 @@ private:
             return nullptr;
         }
         self.index++;
+        self.irGenerator->addFunc2Table(
+                new MFuncType(Token::INTTK), "main", nullptr, lineNum);
 
         if (self.tokenNow() != Token::RPARENT)
             MExceptionManager::pushException(
-                    new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
+                    new MMissingRParenthesesException(
+                            self.tokenList[self.index - 1]->lineNum));
         else
             self.index++;
 
-        MBlock *block = self.getBlock();
+        // 创建新的符号表并连接到main函数上
+        self.irGenerator->createTable("main");
+        MBlock *block = self.getBlock("", "");
         if (block == nullptr) {
             self.index = initial_index;
             return nullptr;
         }
+        self.irGenerator->backTable(false);
 
-        return new MMainFuncDef(block);
+        return new MMainFuncDef(block, lineNum);
     }
 
     MFuncType *getFuncType() {
@@ -436,12 +503,13 @@ private:
         self.index++;
 
         if (self.tokenNow() == Token::LBRACK) { // 处理'['
-            auto constExps = new std::vector<MConstExp *>();
+            auto dims = new std::vector<int>();
             self.index++;
 
             if (self.tokenNow() != Token::RBRACK) // 处理']'
                 MExceptionManager::pushException(
-                        new MMissingRBracketException(self.tokenList[self.index - 1]->lineNum));
+                        new MMissingRBracketException(
+                                self.tokenList[self.index - 1]->lineNum));
             else
                 self.index++;
 
@@ -454,7 +522,7 @@ private:
                     self.index = initial_index;
                     return nullptr;
                 }
-                constExps->push_back(constExp);
+                dims->push_back(self.irGenerator->constExp2int(constExp));
 
                 if (self.tokenNow() != Token::RBRACK)
                     MExceptionManager::pushException(
@@ -462,14 +530,15 @@ private:
                 else
                     self.index++;
             }
-            return new MFuncFParam(bType, ident, constExps);
+            // self.irGenerator->addVar2Table(bType, nullptr, ident->name, false, nullptr, ident->lineNum);
+            return new MFuncFParam(bType, ident, dims, true);
         } else {
             return new MFuncFParam(bType, ident, nullptr);
         }
 
     }
 
-    MBlock *getBlock() {
+    MBlock *getBlock(std::string cyclicLabel1, std::string cyclicLabel2) {
         int initial_index = self.index;
         if (self.tokenNow() != Token::LBRACE) {
             self.index = initial_index;
@@ -484,7 +553,7 @@ private:
             self.index++;
             return new MBlock(blockItems, lineNum);
         }
-        while ((blockItem = self.getBlockItem()) != nullptr) {
+        while ((blockItem = self.getBlockItem(cyclicLabel1, cyclicLabel2)) != nullptr) {
             blockItems->push_back(blockItem);
         }
 
@@ -499,7 +568,7 @@ private:
         return new MBlock(blockItems, lineNum);
     }
 
-    MBlockItem *getBlockItem() {
+    MBlockItem *getBlockItem(std::string cyclicLabel1, std::string cyclicLabel2) {
         int initial_index = self.index;
 
         if (self.tokenNow() == Token::INTTK || self.tokenNow() == Token::CONSTTK) {
@@ -510,7 +579,7 @@ private:
             }
             return new MDeclBlockItem(decl);
         } else {
-            MStmt *stmt = self.getStmt();
+            MStmt *stmt = self.getStmt(cyclicLabel1, cyclicLabel2);
             if (stmt == nullptr) {
                 self.index = initial_index;
                 return nullptr;
@@ -519,10 +588,236 @@ private:
         }
     }
 
+    MStmt *getStmt(std::string cyclicLabel1, std::string cyclicLabel2) {
+        int initial_index = self.index;
+        switch (self.tokenNow()) {
+            case Token::IDENFR: {
+                // 可能是Exp中的函数调用，或者是LVal，或者是个普通的exp
+                self.index++;
+                if (self.tokenNow() == Token::LBRACK ||
+                    self.tokenNow() == Token::ASSIGN) {
+                    self.index--;
+                    return self.getLValStmt();
+                } else {
+                    self.index--;
+                    return self.getExpStmt();
+                }
+            }
+            case Token::SEMICN: //空语句
+                self.index++;
+                return new MNullStmt();
+            case Token::LBRACE: {
+                self.irGenerator->createTable();
+                MBlock *block = self.getBlock(cyclicLabel1, cyclicLabel2);
+                self.irGenerator->backTable();
+                if (block == nullptr) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                return new MBlockStmt(block);
+            }
+
+            case Token::IFTK: {
+                self.index++;
+                if (self.tokenNow() != Token::LPARENT) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                self.index++;
+
+                MCond *ifCond = self.getCond();
+                if (ifCond == nullptr) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+
+                if (self.tokenNow() != Token::RPARENT)
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
+                else
+                    self.index++;
+
+                std::string label1 = self.irGenerator->generateLabel("if_end");
+                self.irGenerator->branchNotTrue(ifCond, label1);
+
+                MStmt *ifStmt = self.getStmt(cyclicLabel1, cyclicLabel2);
+                if (ifStmt == nullptr) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                if (self.tokenNow() == Token::ELSETK) {
+                    // 处理有else的情况
+                    self.index++;
+
+
+                    std::string label2 = self.irGenerator->generateLabel("else_end");
+                    self.irGenerator->branch(label2);
+                    self.irGenerator->setLabel(label1);
+                    MStmt *elseStmt = self.getStmt(cyclicLabel1, cyclicLabel2);
+                    if (elseStmt == nullptr) {
+                        self.index = initial_index;
+                        return nullptr;
+                    }
+                    self.irGenerator->setLabel(label2);
+                    return new MIfStmt(ifCond, ifStmt, elseStmt);
+                } else {
+                    self.irGenerator->setLabel(label1);
+                    return new MIfStmt(ifCond, ifStmt);
+                }
+            }
+
+            case Token::WHILETK: {
+                self.index++;
+                if (self.tokenNow() != Token::LPARENT) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                self.index++;
+                std::string label1 = self.irGenerator->generateLabel("while_begin");
+                self.irGenerator->setLabel(label1);
+                MCond *whileCond = self.getCond();
+                if (whileCond == nullptr) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                if (self.tokenNow() != Token::RPARENT)
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
+                else
+                    self.index++;
+                std::string label2 = irGenerator->generateLabel("while_end");
+                irGenerator->branchNotTrue(whileCond, label2);
+                MStmt *whileStmt = self.getStmt(label1, label2);
+                self.irGenerator->branch(label1);
+                self.irGenerator->setLabel(label2);
+                if (whileStmt == nullptr) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                return new MWhileStmt(whileCond, whileStmt);
+            }
+
+            case Token::BREAKTK: {
+                int lineNum = self.tokenList[self.index]->lineNum;
+                self.index++;
+                if (self.tokenNow() != Token::SEMICN)
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+                else
+                    self.index++;
+                if (cyclicLabel2.empty()) {
+                    MExceptionManager::pushException(
+                            new MBreakStatementInAcyclicBlockException(lineNum));
+                } else {
+                    self.irGenerator->branch(cyclicLabel2);
+                }
+                return new MBreakStmt(lineNum);
+            }
+
+            case Token::CONTINUETK: {
+                int lineNum = self.tokenList[self.index]->lineNum;
+                self.index++;
+                if (self.tokenNow() != Token::SEMICN)
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+                else
+                    self.index++;
+                if (cyclicLabel1.empty()) {
+                    MExceptionManager::pushException(
+                            new MContinueStatementInAcyclicBlockException(lineNum));
+                } else {
+                    self.irGenerator->branch(cyclicLabel1);
+                }
+                return new MContinueStmt(lineNum);
+            }
+
+            case Token::RETURNTK: {
+                self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
+                MExp *exp;
+                if (self.tokenNow() == Token::SEMICN) {
+                    self.index++;
+                    self.irGenerator->returnBack();
+                    return new MReturnStmt(nullptr, lineNum);
+                } else {
+                    exp = self.getExp();
+                    if (exp == nullptr) {
+                        self.index = initial_index;
+                        return nullptr;
+                    }
+                    if (self.tokenNow() != Token::SEMICN)
+                        MExceptionManager::pushException(
+                                new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+                    else
+                        self.index++;
+                    self.irGenerator->setReturnValue(exp);
+                    self.irGenerator->returnBack();
+                    return new MReturnStmt(exp, lineNum);
+                }
+            }
+
+            case Token::PRINTFTK: {
+                self.index++;
+                int lineNum = self.tokenList[self.index]->lineNum;
+
+                if (self.tokenNow() != Token::LPARENT) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                self.index++;
+
+                if (self.tokenNow() != Token::STRCON) {
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                auto formatString = new MFormatString(self.tokenList[self.index]->lexeme);
+                if (!formatString->checkLegal()) {
+                    MExceptionManager::pushException(
+                            new MIllegalCharInFormatStringException(self.tokenList[self.index]->lineNum));
+                }
+                self.index++;
+
+                auto printfExps = new std::vector<MExp *>();
+                MExp *printfExp;
+                while (self.tokenNow() == Token::COMMA) {
+                    self.index++;
+                    if ((printfExp = self.getExp()) == nullptr) {
+                        self.index = initial_index;
+                        return nullptr;
+                    }
+                    printfExps->push_back(printfExp);
+                }
+
+                if (self.tokenNow() != Token::RPARENT) {
+                    MExceptionManager::pushException(
+                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
+                    self.index = initial_index;
+                    return nullptr;
+                }
+                self.index++;
+
+                if (self.tokenNow() != Token::SEMICN)
+                    MExceptionManager::pushException(
+                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+                else
+                    self.index++;
+                self.irGenerator->printf(formatString, printfExps, lineNum);
+                return new MPrintfStmt(formatString, printfExps, lineNum);
+            }
+
+            default: {
+                // 理论上讲这里什么都不用做
+                return self.getExpStmt();
+            }
+
+        }
+    }
+
     MLValStmt *getLValStmt() {
         int initial_index = self.index;
         // 处理"LVal = getint();" 和 "LVal = Exp;"
         MLVal *lVal = self.getLVal();
+
         if (lVal == nullptr) {
             self.index = initial_index;
             return nullptr;
@@ -554,6 +849,7 @@ private:
                         new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
             else
                 self.index++;
+            self.irGenerator->getint(lVal);
             return new MLValStmt(lVal);
         } else {
             // 处理"LVal = Exp;"
@@ -567,11 +863,13 @@ private:
                         new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
             else
                 self.index++;
+            self.irGenerator->assignExp2LVal(lVal, exp);
             return new MLValStmt(lVal, exp);
         }
     }
 
     MExpStmt *getExpStmt() {
+        // TODO 这里是不是啥都不用做
         int initial_index = self.index;
         MExp *exp = self.getExp();
         if (exp == nullptr) {
@@ -579,228 +877,14 @@ private:
             return nullptr;
         }
         if (self.tokenNow() != Token::SEMICN)
-            MExceptionManager::pushException(new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+            MExceptionManager::pushException(
+                    new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
         else
             self.index++;
+        self.irGenerator->handleExp(exp);
         return new MExpStmt(exp);
     }
 
-    MStmt *getStmt() {
-        int initial_index = self.index;
-        switch (self.tokenNow()) {
-            case Token::IDENFR: {
-                // 可能是Exp中的函数调用，或者是LVal，或者是个普通的exp
-                self.index++;
-                if (self.tokenNow() == Token::LPARENT) {
-                    self.index--;
-
-                    MExpStmt *expStmt = self.getExpStmt();
-                    if (expStmt == nullptr) {
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    return expStmt;
-                } else {
-                    self.index--;
-
-                    MLValStmt *lValStmt = self.getLValStmt();
-                    if (lValStmt == nullptr) {
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    return lValStmt;
-                }
-            }
-            case Token::SEMICN: //空语句
-                self.index++;
-                return new MNullStmt();
-            case Token::LBRACE: {
-                MBlock *block = self.getBlock();
-                if (block == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                return new MBlockStmt(block);
-            }
-
-            case Token::IFTK: {
-                self.index++;
-                if (self.tokenNow() != Token::LPARENT) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
-
-                MCond *ifCond = self.getCond();
-                if (ifCond == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-
-                if (self.tokenNow() != Token::RPARENT)
-                    MExceptionManager::pushException(
-                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-
-                MStmt *ifStmt = self.getStmt();
-                if (ifStmt == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                if (self.tokenNow() == Token::ELSETK) {
-                    // 处理有else的情况
-                    self.index++;
-                    MStmt *elseStmt = self.getStmt();
-                    if (elseStmt == nullptr) {
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    return new MIfStmt(ifCond, ifStmt, elseStmt);
-                } else {
-                    return new MIfStmt(ifCond, ifStmt);
-                }
-            }
-
-            case Token::WHILETK: {
-                self.index++;
-                if (self.tokenNow() != Token::LPARENT) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
-
-                MCond *whileCond = self.getCond();
-                if (whileCond == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-
-                if (self.tokenNow() != Token::RPARENT)
-                    MExceptionManager::pushException(
-                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-
-                MStmt *whileStmt = self.getStmt();
-                if (whileStmt == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                return new MWhileStmt(whileCond, whileStmt);
-            }
-
-            case Token::BREAKTK: {
-                self.index++;
-                int lineNum = self.tokenList[self.index]->lineNum;
-                if (self.tokenNow() != Token::SEMICN)
-                    MExceptionManager::pushException(
-                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-                return new MBreakStmt(lineNum);
-            }
-
-            case Token::CONTINUETK: {
-                self.index++;
-                int lineNum = self.tokenList[self.index]->lineNum;
-                if (self.tokenNow() != Token::SEMICN)
-                    MExceptionManager::pushException(
-                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-                return new MContinueStmt(lineNum);
-            }
-
-            case Token::RETURNTK: {
-                self.index++;
-                int lineNum = self.tokenList[self.index]->lineNum;
-                MExp *exp;
-                if (self.tokenNow() == Token::SEMICN) {
-                    self.index++;
-                    return new MReturnStmt(nullptr, lineNum);
-                } else {
-                    exp = self.getExp();
-                    if (exp == nullptr) {
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    if (self.tokenNow() != Token::SEMICN)
-                        MExceptionManager::pushException(
-                                new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                    else
-                        self.index++;
-                    return new MReturnStmt(exp, lineNum);
-                }
-            }
-
-            case Token::PRINTFTK: {
-                self.index++;
-                int lineNum = self.tokenList[self.index]->lineNum;
-
-                if (self.tokenNow() != Token::LPARENT) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
-
-                if (self.tokenNow() != Token::STRCON) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                auto formatString = new MFormatString(self.tokenList[self.index]->lexeme);
-                if (!formatString->checkLegal()) {
-                    MExceptionManager::pushException(
-                            new MIllegalCharInFormatStringException(self.tokenList[self.index]->lineNum));
-
-                }
-                self.index++;
-
-                auto printfExps = new std::vector<MExp *>();
-                MExp *printfExp;
-                while (self.tokenNow() == Token::COMMA) {
-                    self.index++;
-
-                    if ((printfExp = self.getExp()) == nullptr) {
-                        self.index = initial_index;
-                        return nullptr;
-                    }
-                    printfExps->push_back(printfExp);
-                }
-
-                if (self.tokenNow() != Token::RPARENT) {
-                    MExceptionManager::pushException(
-                            new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                self.index++;
-
-                if (self.tokenNow() != Token::SEMICN)
-                    MExceptionManager::pushException(
-                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-
-                return new MPrintfStmt(formatString, printfExps, lineNum);
-            }
-
-            default: {
-                MExp *exp = self.getExp();
-                if (exp == nullptr) {
-                    self.index = initial_index;
-                    return nullptr;
-                }
-                if (self.tokenNow() != Token::SEMICN)
-                    MExceptionManager::pushException(
-                            new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
-                else
-                    self.index++;
-                return new MExpStmt(exp);
-            }
-
-        }
-    }
 
     MExp *getExp() {
         int initial_index = self.index;
@@ -1007,10 +1091,10 @@ private:
             return nullptr;
         }
         mulExps->push_back(mulExp);
-
         while (self.tokenNow() == Token::PLUS
                || self.tokenNow() == Token::MINU) {
-            addOps->push_back(self.tokenNow());
+            auto opToken = self.tokenNow();
+            addOps->push_back(opToken);
             self.index++;
 
             mulExp = self.getMulExp();
@@ -1135,19 +1219,6 @@ private:
             return nullptr;
         }
         return new MConstExp(addExp);
-    }
-
-public:
-
-    explicit SyntaxAnalyzer(std::vector<TokenLexemePair *> &tokenList) :
-            tokenList(tokenList), index(0) {}
-
-    MCompUnit *analyze() {
-        return self.getCompUnit();
-    }
-
-    MCompUnit *ast() {
-        return self.compUnit;
     }
 
 
