@@ -72,6 +72,7 @@ private:
 //                log += std::string(e->what()) + "\n";
 //            }
 //            throw LogException(log);
+            throw "ASTGenerator::getCompUnit: can't get MainFuncDef";
             return nullptr;
         }
         if (index != self.tokenList.size()) throw LogException("There are something after MainFuncDef");
@@ -386,7 +387,9 @@ private:
         self.index++;
 
         MFuncFParams *funcFParams = self.getFuncFParams();
-        self.irGenerator->addFunc2Table(funcType, ident->name, funcFParams, ident->lineNum);
+        //////////////由于可能函数名字可能重定义，因此要用addFunc2Table返回的名字作为新名字
+
+        auto newName = self.irGenerator->addFunc2Table(funcType, ident->name, funcFParams, ident->lineNum);
 
         if (self.tokenNow() != Token::RPARENT)
             MExceptionManager::pushException(
@@ -394,9 +397,11 @@ private:
         else
             self.index++;
 
-        self.irGenerator->createTable(ident->name);
-        self.irGenerator->initParams(ident->name);
+        self.irGenerator->createTable(newName);
+        self.irGenerator->initParams(newName);
+
         MBlock *block = self.getBlock("", "");
+        int lastBlockLineNum = self.tokenList[self.index - 1]->lineNum; // block的最后的'}'的行号
         // 如果是void类型的函数，给他加一个return语句
         if (funcType->type == Token::VOIDTK) {
             self.irGenerator->addReturn();
@@ -406,7 +411,7 @@ private:
             self.index = initial_index;
             return nullptr;
         }
-
+        self.irGenerator->checkBlockReturn(block, funcType->type == Token::VOIDTK, lastBlockLineNum);
         return new MFuncDef(funcType, ident, funcFParams, block);
     }
 
@@ -441,14 +446,15 @@ private:
             self.index++;
 
         // 创建新的符号表并连接到main函数上
-        self.irGenerator->createTable("main");
-        MBlock *block = self.getBlock("", "");
+         self.irGenerator->createTable("main");
+        MBlock *block = self.getBlock("", ""); // false代表有返回值
         if (block == nullptr) {
             self.index = initial_index;
             return nullptr;
         }
+        int lastBlockLineNum = self.tokenList[self.index - 1]->lineNum;
         self.irGenerator->backTable(false);
-
+        self.irGenerator->checkBlockReturn(block, false, lastBlockLineNum);
         return new MMainFuncDef(block, lineNum);
     }
 
@@ -539,6 +545,8 @@ private:
     }
 
     MBlock *getBlock(std::string cyclicLabel1, std::string cyclicLabel2) {
+        // label用来break和continue
+
         int initial_index = self.index;
         if (self.tokenNow() != Token::LBRACE) {
             self.index = initial_index;
@@ -592,16 +600,25 @@ private:
         int initial_index = self.index;
         switch (self.tokenNow()) {
             case Token::IDENFR: {
-                // 可能是Exp中的函数调用，或者是LVal，或者是个普通的exp
-                self.index++;
-                if (self.tokenNow() == Token::LBRACK ||
-                    self.tokenNow() == Token::ASSIGN) {
-                    self.index--;
-                    return self.getLValStmt();
+                // 回溯一下下
+                MStmt* stmt = self.getLValStmt();
+                if (stmt != nullptr) {
+                    return stmt;
+                } else if((stmt = self.getExpStmt()) != nullptr){
+                    return stmt;
                 } else {
-                    self.index--;
-                    return self.getExpStmt();
+                    return nullptr;
                 }
+                // 可能是Exp中的函数调用，或者是LVal，或者是个普通的exp
+//                self.index++;
+//                if (self.tokenNow() == Token::LBRACK ||
+//                    self.tokenNow() == Token::ASSIGN) {
+//                    self.index-- // 消除回溯出了bug
+//                    return self.getLValStmt();
+//                } else {
+//                    self.index--;
+//                    return self.getExpStmt();
+//                }
             }
             case Token::SEMICN: //空语句
                 self.index++;
@@ -747,7 +764,8 @@ private:
                     }
                     if (self.tokenNow() != Token::SEMICN)
                         MExceptionManager::pushException(
-                                new MMissingSemicolonException(self.tokenList[self.index - 1]->lineNum));
+                                new MMissingSemicolonException(
+                                        self.tokenList[self.index - 1]->lineNum));
                     else
                         self.index++;
                     self.irGenerator->setReturnValue(exp);

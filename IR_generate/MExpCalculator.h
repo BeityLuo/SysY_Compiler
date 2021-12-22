@@ -124,19 +124,17 @@ private:
     }
 
     MVariableSymbolTableItem* getVariableTableItem(std::string& name) {
-        auto table = currentTable;
-        while (table != nullptr) {
+
+        for (auto table = currentTable; table != nullptr; table = table->getFatherScopeTable()) {
             if (table->contains(name)) {
                 auto item = table->getTableItem(name);
                 if (!item->isVariable) {
                     throw "MExpCalculator::MVariableSymbolTableItem: " + name + "是一个函数";
                 }
                 return (MVariableSymbolTableItem *)item;
-            } else {
-                throw "MExpCalculator::MVariableSymbolTableItem: 未定义的ident";
             }
         }
-        throw "MExpCalculator::MVariableSymbolTableItem: 未定义的ident";
+        throw "MExpCalculator::MVariableSymbolTableItem: undefined ident";
     }
 };
 

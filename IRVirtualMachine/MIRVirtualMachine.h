@@ -16,17 +16,15 @@ private:
     std::unordered_map<std::string, int> *labelMap;
     std::string ans;
 
-    bool doCout;
-
 public:
-    MIRVirtualMachine(std::vector<MIRStatement *> *irStatements, bool doCout)
-            : ram(new MRAM()), pc(0), irStatements(irStatements), doCout(doCout),
+    MIRVirtualMachine(std::vector<MIRStatement *> *irStatements)
+            : ram(new MRAM()), pc(0), irStatements(irStatements),
               global(new MIRSymbolTable(nullptr)), ans(""),
               labelMap(new std::unordered_map<std::string, int>()) {
         self.current = global;
         int i = 0;
         for (auto ir: *(self.irStatements)) {
-            if (ir->type == IRType::LABEL) {
+            if (ir->type == MIRStatementType::LABEL) {
                 self.bindLabel(((MLabelIRStatement *) ir)->label, i);
             }
             i++;
@@ -34,7 +32,7 @@ public:
     }
 
     void run() {
-        while ((*(self.irStatements))[self.pc]->type != IRType::EXIT) {
+        while ((*(self.irStatements))[self.pc]->type != MIRStatementType::EXIT) {
             self.run((*(self.irStatements))[self.pc]);
             pc++;
         }
@@ -51,7 +49,7 @@ private:
         (*(self.labelMap))[label] = offset;
     }
 
-    int calcuSize(MBaseType *type) {
+    static int calculateSize(MBaseType *type) {
         if (type->isArray) {
             if (type->isParam) {
                 return 1;
@@ -68,7 +66,6 @@ private:
     }
 
     MIRSymbolTableItem *getTableItem(std::string name) {
-        auto table = self.current;
         for (auto table = self.current; table != nullptr; table = table->father) {
             if (table->contains(name)) {
                 return table->getItem(name);
@@ -78,73 +75,68 @@ private:
         throw "MIRVirtualMachine::getTableItem: item not found";
     }
 
-    int loadIRVar(std::string irVar) {
-        if (irVar[0] == '%') {
-            // 说明是立即数
-            return self.ram->loadTempRegister(irVar.substr(1, irVar.size() - 1));
-        } else if (!(irVar[0] >= '0' && irVar[0] <= '9' || irVar[0] == '-')) {
+    int loadIRVar(MIRVar* irVar) {
+        if (irVar->getTypeID() == MIRVarTypeID::REG_IR_VAR) {
+            return self.ram->loadReg(((MImmIRVar*)irVar)->value);
+        } else if (irVar->getTypeID() == MIRVarTypeID::VAR_IR_VAR) {
             // 说明是变量
-            auto item = self.getTableItem(self.irVar2Ident(irVar));
+            auto varIRVar = (MVarIRVar*)irVar;
+            auto item = self.getTableItem(varIRVar->name);
             if (item->getTypeID() != MIRSymbolTableItemTypeID::VAR_IR_SYMBOL_TABLE_ITEM) {
                 throw "MIRVirtualMachine::loadIRVar: should be a var but a func";
             }
             auto varItem = (MVarIRSymbolTableItem *) item;
             int address = varItem->address;
-            if (varItem->varType->isParam && varItem->varType->isArray) {
+            if (varItem->varType->isArray && varIRVar->getOffset() == nullptr)
+                //是数组而没有偏移量，则返回数组的首地址
+                if (varItem->varType->isParam)
+                    // 要将参数数组作为参数传递
+                    return self.ram->load(varItem->address);
+                else
+                    return address;
+            if (varItem->varType->isParam && varIRVar->getOffset() != nullptr)
+                // 是参数又是数组，则一定是一个指针，计算指向的地址
                 address = self.ram->load(varItem->address);
-                // true代表了是param
-                auto arrayIndexes = self.analyzeArrayIndexes(irVar);
-                if (arrayIndexes->size() == 0) {
-                    // 说明要的是指针而不是值
-                    return address;
-                }
-
-                address += self.calcuArrayOffset(varItem->varType->dims, arrayIndexes, true);
-            } else if (varItem->varType->isArray) {
-                auto arrayIndexes = self.analyzeArrayIndexes(irVar);
-                if (arrayIndexes->size() == 0) {
-                    // 说明要的是指针而不是值
-                    return address;
-                }
-                address += self.calcuArrayOffset(varItem->varType->dims, arrayIndexes);
-            }
+            if (varIRVar->getOffset() != nullptr)
+                // 是数组就要加上偏移量
+                address += self.loadIRVar(varIRVar->getOffset());
             return self.ram->load(address);
         } else {
             // 一定是一个立即数
-            return std::stoi(irVar);
+            return ((MImmIRVar*)irVar)->value;
         }
 
     }
 
-    void saveIRVar(std::string irVar, int value) {
-        if (irVar[0] == '%') {
+    void saveIRVar(MIRVar* irVar, int value) {
+        if (irVar->getTypeID() == MIRVarTypeID::REG_IR_VAR) {
             // 临时寄存器
-            self.ram->saveTempRegister(value, irVar.substr(1, irVar.size() - 1));
-        } else if (!(irVar[0] >= '0' && irVar[0] <= '9' || irVar[0] == '-')) {
+            self.ram->saveReg(value, ((MRegIRVar*)irVar)->regID);
+        } else if (irVar->getTypeID() == MIRVarTypeID::VAR_IR_VAR) {
             // 变量
-            auto item = self.getTableItem(self.irVar2Ident(irVar));
+            auto varIRVar = (MVarIRVar*)irVar;
+            auto item = self.getTableItem(varIRVar->name);
             if (item->getTypeID() != MIRSymbolTableItemTypeID::VAR_IR_SYMBOL_TABLE_ITEM) {
                 throw "MIRVirtualMachine::saveIRVar: should be a var but a func";
             }
             auto varItem = (MVarIRSymbolTableItem *) item;
             int address = varItem->address;
-            if (varItem->varType->isParam && varItem->varType->isArray) {
+            if (varItem->varType->isArray && varIRVar->getOffset() == nullptr)
+                //是数组而没有偏移量，则返回数组的首地址
+                if (varItem->varType->isParam) {
+                    // 要将数组赋值给数组指针（参数数组）
+                    self.ram->save(value, varItem->address);
+                    return;
+                } else {
+                    // 要将数组赋值给数组，理论上不允许
+                    throw "MIRVirtualMachine::saveIRVar: assign array to array";
+                }
+            if (varItem->varType->isParam && varIRVar->getOffset() != nullptr)
+                // 是参数又是数组，则一定是一个指针，计算指向的地址
                 address = self.ram->load(varItem->address);
-                // true代表了是param
-                auto arrayIndexes = self.analyzeArrayIndexes(irVar);
-                if (arrayIndexes->size() == 0) {
-                    // 说明要的是指针而不是值
-                    return self.ram->save(value, varItem->address);
-                }
-                address += self.calcuArrayOffset(varItem->varType->dims, arrayIndexes, true);
-            } else if (varItem->varType->isArray) {
-                auto arrayIndexes = self.analyzeArrayIndexes(irVar);
-                if (arrayIndexes->size() == 0) {
-                    // 说明要的是指针而不是值
-                    return self.ram->save(value, varItem->address);
-                }
-                address += self.calcuArrayOffset(varItem->varType->dims, arrayIndexes);
-            }
+            if (varIRVar->getOffset() != nullptr)
+                // 是数组就要加上偏移量
+                address += self.loadIRVar(varIRVar->getOffset());
             self.ram->save(value, address);
         } else {
             // 一定是一个立即数
@@ -158,71 +150,10 @@ private:
         return irVar.substr(0, i);
     }
 
-
-    std::vector<int> *analyzeArrayIndexes(std::string var) {
-        // e.g. var = $a[2][3], output = [2, 3];
-        auto ans = new std::vector<int>();
-        int i = 0;
-        for (; i < var.size() && var[i] != '['; i++);
-        i++;
-//        if (isParam) {
-//            i += 2;
-//        } //把][跳过去
-        for (; i < var.size(); i++) {
-            if (var[i] >= '0' && var[i] <= '9') {
-                // 处理x[1]这种
-                int index = 0;
-                for (; i < var.size() && var[i] >= '0' && var[i] <= '9'; i++)
-                    index = index * 10 + var[i] - '0';
-                ans->push_back(index);
-            } else if (var[i] == '%') {
-                // 处理x[%0]这种
-                std::string tempIR = "%";
-                i++;
-                for (; i < var.size() && var[i] >= '0' && var[i] <= '9'; i++)
-                    tempIR += var[i];
-                ans->push_back(this->loadIRVar(tempIR));
-            } else if (var[i] >= 'a' && var[i] <= 'z' || var[i] == '_' ||
-                       var[i] >= 'A' && var[i] <= 'Z') {
-                // 处理x[x[0]]这种
-                std::string name = "";
-                for (; i < var.size() && var[i] >= 'a' && var[i] <= 'z' ||
-                       var[i] == '_' || var[i] >= 'A' && var[i] <= 'Z'; i++)
-                    name += var[i];
-                ans->push_back(self.loadIRVar(name));
-            }
-        }
-        return ans;
-    }
-
-    int calcuArrayOffset(std::vector<int> *dims, std::vector<int> *arrayIndexes, bool isParam=false) {
-        //忘了有啥用了
-        if (arrayIndexes->size() == 0)
-            return 0;
-        // 如果是param的话，dim比arrayIndexes少一维
-        if (!isParam && dims->size() != arrayIndexes->size() ||
-                dims->size() != arrayIndexes->size() - 1)
-            throw "MIRVirtualMachine::calcuArrayOffset: dims and arrayIndexes not match";
-
-        int num = arrayIndexes->size();
-        int offset = (*(arrayIndexes))[num - 1];
-        for (int i = num - 2; i >= 0; i--) {
-            int size = 1;
-            for (int j = i + 1; j < num; j++) {
-                if (isParam)
-                    size *= (*(dims))[j-1];
-                else
-                    size *= (*(dims))[j];
-            }
-            offset += (*(arrayIndexes))[i] * size;
-        }
-        return offset;
-    }
-
     void runDecl(MDeclIRStatement *ir) {
         if (self.current->contains(ir->name))
             throw "MIRVirtualMachine::runDecl: redefination";
-        int address = ram->allocate(self.calcuSize(ir->type));
+        int address = ram->allocate(self.calculateSize(ir->type));
         self.current->addItem(
                 new MVarIRSymbolTableItem(self.irVar2Ident(ir->name), ir->type, address));
 
@@ -261,42 +192,42 @@ private:
     }
 
     void runPush(MPushIRStatement *ir) {
-        self.ram->pushParam(self.loadIRVar(ir->varName));
+        self.ram->pushParam(self.loadIRVar(ir->irVar));
     }
 
     void runPop(MPopIRStatement *ir) {
         int value = self.ram->popParam();
-        self.saveIRVar(ir->varName, value);
+        self.saveIRVar(ir->irVar, value);
     }
 
     void runBinary(MBinaryIRStatement *ir) {
         int value1 = self.loadIRVar(ir->var1);
         int value2 = self.loadIRVar(ir->var2);
-        if (ir->type == "add") {
+        if (ir->type == MBinaryIRType::ADD) {
             self.saveIRVar(ir->target, value1 + value2);
-        } else if (ir->type == "sub") {
+        } else if (ir->type == MBinaryIRType::SUB) {
             self.saveIRVar(ir->target, value1 - value2);
-        } else if (ir->type == "mult") {
+        } else if (ir->type == MBinaryIRType::MULT) {
             self.saveIRVar(ir->target, value1 * value2);
-        } else if (ir->type == "div") {
+        } else if (ir->type == MBinaryIRType::DIV) {
             self.saveIRVar(ir->target, value1 / value2);
-        } else if (ir->type == "mod") {
+        } else if (ir->type == MBinaryIRType::MOD) {
             self.saveIRVar(ir->target, value1 % value2);
-        } else if (ir->type == "or") {
+        } else if (ir->type == MBinaryIRType::OR) {
             self.saveIRVar(ir->target, value1 || value2);
-        } else if (ir->type == "and") {
+        } else if (ir->type == MBinaryIRType::AND) {
             self.saveIRVar(ir->target, value1 && value2);
-        } else if (ir->type == "eql") {
+        } else if (ir->type == MBinaryIRType::EQL) {
             self.saveIRVar(ir->target, value1 == value2);
-        } else if (ir->type == "neq") {
+        } else if (ir->type == MBinaryIRType::NEQ) {
             self.saveIRVar(ir->target, value1 != value2);
-        } else if (ir->type == "lss") {
+        } else if (ir->type == MBinaryIRType::LSS) {
             self.saveIRVar(ir->target, value1 < value2);
-        } else if (ir->type == "leq") {
+        } else if (ir->type == MBinaryIRType::LEQ) {
             self.saveIRVar(ir->target, value1 <= value2);
-        } else if (ir->type == "gre") {
+        } else if (ir->type == MBinaryIRType::GRE) {
             self.saveIRVar(ir->target, value1 > value2);
-        } else if (ir->type == "geq") {
+        } else if (ir->type == MBinaryIRType::GEQ) {
             self.saveIRVar(ir->target, value1 >= value2);
         } else {
             throw "MIRVirtualMachine::runBinary: unhandled Binary calculation type";
@@ -305,11 +236,11 @@ private:
 
     void runUnary(MUnaryIRStatement *ir) {
         int value = self.loadIRVar(ir->var);
-        if (ir->type == "pos") {
+        if (ir->type == MUnaryIRType::POS) {
             self.saveIRVar(ir->target, value);
-        } else if (ir->type == "neg") {
+        } else if (ir->type == MUnaryIRType::NEG) {
             self.saveIRVar(ir->target, -value);
-        } else if (ir->type == "not") {
+        } else if (ir->type == MUnaryIRType::NOT) {
             self.saveIRVar(ir->target, value == 0 ? 1 : 0);
         } else {
             throw "MIRVirtualMachine::runUnary: unhandled Unary calculation type";
@@ -342,15 +273,11 @@ private:
 
     void runPutchar(MPutCharIRStatement *ir) {
         ans += ir->c;
-        if (doCout)
-            printf("%c", ir->c);
     }
 
     void runPutvar(MPutVarIRStatement *ir) {
         std::string value = std::to_string(self.ram->popParam());
         self.ans += value;
-        if (doCout)
-            printf("%s", value.c_str());
     }
 
     void runBranch(MBranchIRStatement *ir) {
@@ -365,76 +292,76 @@ private:
 
     void run(MIRStatement *ir) {
         switch (ir->type) {
-            case IRType::DECL: {
+            case MIRStatementType::DECL: {
                 self.runDecl((MDeclIRStatement *) ir);
                 return;
             }
-            case IRType::FUNC_DEF: {
+            case MIRStatementType::FUNC_DEF: {
                 self.runFuncDef((MFuncDefIRStatement *) ir);
                 return;
             }
-            case IRType::CALL_FUNC: {
+            case MIRStatementType::CALL_FUNC: {
                 self.runCallFunc((MCallFuncIRStatement *) ir);
                 return;
             }
-            case IRType::RETURN: {
+            case MIRStatementType::RETURN: {
                 self.runReturn((MReturnIRStatement *) ir);
                 return;
             }
-            case IRType::PUSH: {
+            case MIRStatementType::PUSH: {
                 self.runPush((MPushIRStatement *) ir);
                 return;
             }
-            case IRType::POP: {
+            case MIRStatementType::POP: {
                 self.runPop((MPopIRStatement *) ir);
                 return;
             }
-            case IRType::BINARY: {
+            case MIRStatementType::BINARY: {
                 self.runBinary((MBinaryIRStatement *) ir);
                 return;
             }
-            case IRType::UNARY: {
+            case MIRStatementType::UNARY: {
                 self.runUnary((MUnaryIRStatement *) ir);
                 return;
             }
-            case IRType::LABEL: {
+            case MIRStatementType::LABEL: {
                 self.runLabel((MLabelIRStatement *) ir);
                 return;
             }
-            case IRType::ENTER_BLOCK: {
+            case MIRStatementType::ENTER_BLOCK: {
                 self.runEnterBlock();
                 return;
             }
-            case IRType::EXIT_BLOCK: {
+            case MIRStatementType::EXIT_BLOCK: {
                 self.runExitBlock();
                 return;
             }
-            case IRType::SAVE: {
+            case MIRStatementType::SAVE: {
                 self.runSave((MSaveIRStatement *) ir);
                 return;
             }
-            case IRType::GETINT: {
+            case MIRStatementType::GETINT: {
                 self.runGetint((MGetintIRStatement *) ir);
                 return;
             }
-            case IRType::PUTCHAR: {
+            case MIRStatementType::PUTCHAR: {
                 self.runPutchar((MPutCharIRStatement *) ir);
                 return;
             }
-            case IRType::PUTVAR: {
+            case MIRStatementType::PUTVAR: {
                 self.runPutvar((MPutVarIRStatement *) ir);
                 return;
             }
-            case IRType::BR: {
+            case MIRStatementType::BR: {
                 self.runBranch((MBranchIRStatement *) ir);
                 return;
             }
-            case IRType::BNT: {
+            case MIRStatementType::BNT: {
                 self.runBranchNotTrue((MBranchNotTrueIRStatement *) ir);
                 return;
             }
             default:
-                throw "MIRVirtualMachine::run: unhandled IRType";
+                throw "MIRVirtualMachine::run: unhandled MIRStatementType";
 
         }
     }

@@ -63,27 +63,26 @@ public:
     }
 
     // tempIR会是"1", "12", "return_value"这样的，没有'%'
-    void saveTempRegister(int value, std::string tempIR) {
-        if (tempIR == "return_value") {
+    void saveReg(int value, int regID) {
+        if (regID == -1) {
             self.returnValueRegister = value;
         } else {
-            int tempNo = std::stoi(tempIR);
-            if (tempNo >= MAX_TEMP_REGISTER_NUM) {
+            if (regID >= MAX_TEMP_REGISTER_NUM) {
                 throw "MRAM::saveTempIRVar: register no out of boundary";
             }
-            self.tempRegisters[tempNo] = value;
+            self.tempRegisters[regID] = value;
         }
     }
 
-    int loadTempRegister(std::string tempIR) {
-        if (tempIR == "return_value") {
+    int loadReg(int regID) {
+        if (regID == -1) {
+            // -1代表了返回值寄存器
             return self.returnValueRegister;
         } else {
-            int tempNo = std::stoi(tempIR);
-            if (tempNo >= MAX_TEMP_REGISTER_NUM) {
-                throw "MRAM::loadTempRegister: register no out of boundary";
+            if (regID >= MAX_TEMP_REGISTER_NUM) {
+                throw "MRAM::loadReg: register no out of boundary";
             }
-            return self.tempRegisters[tempNo];
+            return self.tempRegisters[regID];
         }
     }
 

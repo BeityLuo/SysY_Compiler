@@ -602,6 +602,8 @@ public:
     int getTypeID() override {
         return MSyntaxNodeTypeID::EXP;
     }
+
+
 };
 
 class MConstExp : public MSyntaxNode {
@@ -1016,35 +1018,59 @@ public:
     explicit MFormatString(std::string formatString)
             : formatString(std::move(formatString)), formatCharNum(0) {
         // 只允许 ' ', '!', '%d', '\n'出现
+        self.isLegal = true;
         char c;
         int len = self.formatString.size();
         if (len < 2 || self.formatString[0] != '"' ||
             self.formatString[len - 1] != '"') {
+            // 两头都是双引号
             self.isLegal = false;
             return;
         }
-        for (int i = 1, c = self.formatString[1]; i < len - 1; i++, c = self.formatString[i]) {
+        int i = 1;
+        for (c = self.formatString[1]; i < len - 1; i++, c = self.formatString[i]) {
             if (c == '%') {
                 // 判断%d
                 i++;
-                if (i == len || self.formatString[i] != 'd') {
+                if (i == len) {
+                    // 字符串末尾有%
                     self.isLegal = false;
-                    return;
+                    i -= 2; // 让i回到%之前一个字符
+                    self.formatString = self.formatString.substr(0, i + 1);
+                    len = self.formatString.length();
+                } else if (self.formatString[i] != 'd') {
+                    // 把不符合规范的部分裁剪掉
+                    self.isLegal = false;
+                    i -= 2; // 让i回到%之前一个字符
+                    self.formatString = self.formatString.substr(0, i + 1) + self.formatString.substr(i + 3, len - i - 3);
+                    len = self.formatString.length();
+                } else {
+                    self.formatCharNum++;
                 }
-                self.formatCharNum++;
             } else if (c == '\\') {
                 // 判断%\n
                 i++;
-                if (i == len || self.formatString[i] != 'n') {
+                if (i == len) {
+                    // 字符串末尾有%
                     self.isLegal = false;
-                    return;
+                    i -= 2; // 让i回到'/'之前一个字符
+                    self.formatString = self.formatString.substr(0, i + 1);
+                    len = self.formatString.length();
+                } else if (self.formatString[i] != 'n') {
+                    // 把不符合规范的部分裁剪掉
+                    self.isLegal = false;
+                    i -= 2; // 让i回到'/'之前一个字符
+                    self.formatString = self.formatString.substr(0, i + 1) + self.formatString.substr(i + 3, len - i - 3);
+                    len = self.formatString.length();
                 }
             } else if (!((c > 39 && c < 127) || c == 32 || c == 33)) {
                 self.isLegal = false;
-                return;
+                i -= 1; // 让i回到非法符号之前一个字符
+                self.formatString = self.formatString.substr(0, i + 1) + self.formatString.substr(i + 2, len - i - 2);;
+                len = self.formatString.length();
             }
         }
-        self.isLegal = true;
+
     }
 
     std::string toString() override {

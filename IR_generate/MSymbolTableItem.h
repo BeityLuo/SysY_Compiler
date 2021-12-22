@@ -47,6 +47,47 @@ public:
             }
         return ans;
     }
+
+    bool equals(MBaseType* type) {
+        // 这段代码目前来讲用不上
+//        if (self.type->type == Token::VOIDTK)
+//            // 判断void
+//            return type->type->type == Token::VOIDTK;
+//        if (!self.isArray)
+//            // 判断普通变量
+//            return !type->isArray;
+//        // 判断数组
+//        if (self.isParam) {
+//            if (type->isParam) {
+//                if (self.dims->size() != type->dims->size())
+//                    throw "MBaseType::equals: type's dim not match";
+//                for (int i = 0; i < self.dims->size(); i++)
+//                    if ((*(self.dims))[i] != (*(type->dims))[i])
+//                        return false;
+//            } else {
+//                if (self.dims->size() != type->dims->size() - 1)
+//                    throw "MBaseType::equals: type's dim not match";
+//                for (int i = 0; i < self.dims->size(); i++)
+//                    if ((*(self.dims))[i] != (*(type->dims))[i + 1])
+//                        return false;
+//            }
+//        } else {
+//            if (type->isParam) {
+//                if (self.dims->size() != type->dims->size() - 1)
+//                    throw "MBaseType::equals: type's dim not match";
+//                for (int i = 0; i < self.dims->size(); i++)
+//                    if ((*(self.dims))[i + 1] != (*(type->dims))[i])
+//                        return false;
+//            } else {
+//                if (self.dims->size() != type->dims->size())
+//                    throw "MBaseType::equals: type's dim not match";
+//                for (int i = 0; i < self.dims->size(); i++)
+//                    if ((*(self.dims))[i] != (*(type->dims))[i])
+//                        return false;
+//            }
+//        }
+        return true;
+    }
 };
 
 class MVarType : public MBaseType {
@@ -117,6 +158,7 @@ public:
     int paramNum;
     std::vector<MParamType *> *paramTypes;
     std::vector<std::string> *paramNames;
+    std::vector<int>* paramLineNum;
     MSymbolTable *funcSymbolTable;
     MBaseType *returnType;
 
@@ -125,6 +167,7 @@ public:
                              int paramNum,
                              std::vector<MParamType *> *paramTypes,
                              std::vector<std::string> *paramNames,
+                             std::vector<int>* paramLineNum,
                              MSymbolTable *funcSymbolTable = nullptr);
 
     void setTable(MSymbolTable *table) {

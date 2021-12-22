@@ -5,8 +5,7 @@
 class MLabelManager {
 private:
     int whileLabelCnt = 0;
-    int ifEndLabelCnt = 0;
-    int elseEndLabelCnt = 0;
+    int ifLabelCnt = 0;
 public:
     std::string getFuncLabel(std::string &name) {
         return name;
@@ -15,14 +14,13 @@ public:
     std::string getLabel(std::string &type) {
         // 耦合度奇高无比
         if (type == "while_begin") {
-            return type + "_" + std::to_string(whileLabelCnt);
+            return type + "_" + std::to_string(whileLabelCnt++);
         } else if (type == "while_end") {
             return type +  "_" + std::to_string(whileLabelCnt++);
         } else if (type == "else_end") {
-            return type +  "_" + std::to_string(elseEndLabelCnt);
+            return type +  "_" + std::to_string(ifLabelCnt++);
         } else if (type == "if_end") {
-            self.elseEndLabelCnt++;
-            return type + "_" + std::to_string(ifEndLabelCnt++);
+            return type + "_" + std::to_string(ifLabelCnt++);
         } else {
             throw "MLabelManager::generateLabel: unknown label type";
         }

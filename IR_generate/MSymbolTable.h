@@ -44,7 +44,7 @@ public:
 
     void addSymbolItem(MSymbolTableItem *symbolTableItem);
 
-    bool contains(std::string &name) {
+    bool contains(const std::string &name) {
         return self.table.find(name) != self.table.end();
     }
 
@@ -61,7 +61,10 @@ public:
     }
 
     MSymbolTableItem *getTableItem(const std::string& name) {
-        return self.table[name];
+        if (self.contains(name))
+            return self.table[name];
+        else
+            return nullptr;
     }
 
     void setFatherTableItem(MFunctionSymbolTableItem *item) {

@@ -7,6 +7,8 @@ enum MIRVarTypeID {
 class MIRVar {
 public:
     virtual MIRVarTypeID getTypeID() = 0;
+
+    virtual std::string toString() = 0;
 };
 
 class MImmIRVar : public MIRVar {
@@ -18,18 +20,9 @@ public:
     MIRVarTypeID getTypeID() override {
         return IMM_IR_VAR;
     }
-};
 
-class MVarIRVar : public MIRVar {
-public:
-    std::string name;
-    MImmIRVar *offset;
-
-    MVarIRVar(const std::string name, MImmIRVar *offset)
-            : name(name), offset(offset) {}
-
-    MIRVarTypeID getTypeID() override {
-        return VAR_IR_VAR;
+    std::string toString() override {
+        return std::to_string(value);
     }
 };
 
@@ -39,8 +32,55 @@ public:
 
     MRegIRVar(int regId) : regID(regId) {}
 
+    MRegIRVar(std::string name) {
+        if (name == "return_value")
+            regID = -1;
+        else
+            throw "MRegIRVar::MRegIRVar: unexpected name: " + name;
+    }
+
     MIRVarTypeID getTypeID() override {
         return REG_IR_VAR;
+    }
+
+    std::string toString() override {
+        if (regID == -1)
+            return "%return_value";
+        else
+            return '%' + std::to_string(regID);
+    }
+};
+
+class MVarIRVar : public MIRVar {
+private:
+    MRegIRVar *regOffset;
+    MImmIRVar *immOffset;
+public:
+    std::string name;
+
+    MVarIRVar(std::string name) : name(name), regOffset(nullptr), immOffset(nullptr) {}
+    MVarIRVar(std::string name, MRegIRVar *regOffset)
+            : name(name), regOffset(regOffset), immOffset(nullptr) {}
+
+    MVarIRVar(std::string name, MImmIRVar *immOffset)
+            : name(name), regOffset(nullptr), immOffset(immOffset) {}
+
+    MIRVarTypeID getTypeID() override {
+        return VAR_IR_VAR;
+    }
+
+    MIRVar* getOffset() {
+        if (regOffset == nullptr) return immOffset;
+        else return regOffset;
+    }
+
+    std::string toString() override {
+        if (regOffset == nullptr && immOffset == nullptr)
+            return name;
+        else if (regOffset != nullptr)
+            return name + '[' + regOffset->toString() + ']';
+        else
+            return name + '[' + immOffset->toString() + ']';
     }
 };
 
