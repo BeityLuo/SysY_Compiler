@@ -4,15 +4,13 @@ import codecs
 exe_path = "./cmake-build-debug/BUAA_Compiler.exe"
 # test_file_path = "D:\\Chaos\\Program\\C++\\BUAA_Compiler\\cmake-build-debug\\testfiles\\";
 test_file_path = "D:\\Chaos\\课程\编译原理\\编译原理测试程序\\testfiles\\"
-level = "B"
+level = "A"
 file_num = {'C': 29, 'B': 27, 'A': 26}
 test_file_num = 30
 _test_file_path = "./testfile.txt"
 _output_file_path = "./pcoderesult.txt"
 
 for i in range(1, file_num[level] + 1):
-    # if i == 7 or i == 8 or i == 9 or i == 17 or i == 27 or i == 28:
-    #     continue
     if level == 'C' and (i == 15 or i == 27 or i == 28):
         continue
 
@@ -46,6 +44,16 @@ for i in range(1, file_num[level] + 1):
     isError = False
     for j in range(0, len(std_output)):
         l1 = std_output[j]
+        if len(m_output) <= j:
+            print("$$$$$$$$$$$$$$$ERROR$$$$$$$$$$$$$$$$$$$$\n testfile: " + str(i) + ", in line " + str(j))
+            print("your output is less than std_output, only " + str(j) + ' lines')
+            print("std output: ")
+            print(std_output)
+            print("your output: ")
+            print(m_output)
+            print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
+            isError = True
+            break
         l2 = m_output[j]
         # 可能出现标准输出的最后一行少一个\n
         if l1 != l2 and not l2.startswith(l1):

@@ -642,7 +642,11 @@ private:
                 }
                 self.index++;
 
+               // 短路求值
+                auto condEndLabel = self.irGenerator->generateLabel("cond_end");
+                std::string ifEndLabel = self.irGenerator->generateLabel("if_end");
                 MCond *ifCond = self.getCond();
+
                 if (ifCond == nullptr) {
                     self.index = initial_index;
                     return nullptr;
@@ -654,8 +658,9 @@ private:
                 else
                     self.index++;
 
-                std::string label1 = self.irGenerator->generateLabel("if_end");
-                self.irGenerator->branchNotTrue(ifCond, label1);
+
+                self.irGenerator->branchNotTrue(ifCond, condEndLabel, ifEndLabel);
+                self.irGenerator->setLabel(condEndLabel); // 短路求值
 
                 MStmt *ifStmt = self.getStmt(cyclicLabel1, cyclicLabel2);
                 if (ifStmt == nullptr) {
@@ -667,18 +672,18 @@ private:
                     self.index++;
 
 
-                    std::string label2 = self.irGenerator->generateLabel("else_end");
-                    self.irGenerator->branch(label2);
-                    self.irGenerator->setLabel(label1);
+                    std::string elseEndLabel = self.irGenerator->generateLabel("else_end");
+                    self.irGenerator->branch(elseEndLabel);
+                    self.irGenerator->setLabel(ifEndLabel);
                     MStmt *elseStmt = self.getStmt(cyclicLabel1, cyclicLabel2);
                     if (elseStmt == nullptr) {
                         self.index = initial_index;
                         return nullptr;
                     }
-                    self.irGenerator->setLabel(label2);
+                    self.irGenerator->setLabel(elseEndLabel);
                     return new MIfStmt(ifCond, ifStmt, elseStmt);
                 } else {
-                    self.irGenerator->setLabel(label1);
+                    self.irGenerator->setLabel(ifEndLabel);
                     return new MIfStmt(ifCond, ifStmt);
                 }
             }
@@ -690,8 +695,9 @@ private:
                     return nullptr;
                 }
                 self.index++;
-                std::string label1 = self.irGenerator->generateLabel("while_begin");
-                self.irGenerator->setLabel(label1);
+                std::string whileBeginLabel = self.irGenerator->generateLabel("while_begin");
+                std::string condEndLabel = self.irGenerator->generateLabel("cond_end");
+                self.irGenerator->setLabel(whileBeginLabel);
                 MCond *whileCond = self.getCond();
                 if (whileCond == nullptr) {
                     self.index = initial_index;
@@ -702,11 +708,12 @@ private:
                             new MMissingRParenthesesException(self.tokenList[self.index - 1]->lineNum));
                 else
                     self.index++;
-                std::string label2 = irGenerator->generateLabel("while_end");
-                irGenerator->branchNotTrue(whileCond, label2);
-                MStmt *whileStmt = self.getStmt(label1, label2);
-                self.irGenerator->branch(label1);
-                self.irGenerator->setLabel(label2);
+                std::string whileEndLabel = self.irGenerator->generateLabel("while_end");
+                self.irGenerator->branchNotTrue(whileCond, condEndLabel, whileEndLabel);
+                self.irGenerator->setLabel(condEndLabel);
+                MStmt *whileStmt = self.getStmt(whileBeginLabel, whileEndLabel);
+                self.irGenerator->branch(whileBeginLabel);
+                self.irGenerator->setLabel(whileEndLabel);
                 if (whileStmt == nullptr) {
                     self.index = initial_index;
                     return nullptr;

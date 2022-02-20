@@ -257,10 +257,9 @@ public:
         return expArray;
     }
 
-    void branchNotTrue(MCond *cond, std::string label) {
-        auto irVar = self.calculateCond(cond);
-        if (irVar != nullptr)
-            self.addIR(new MBranchNotTrueIRStatement(irVar, label));
+    void branchNotTrue(MCond *cond, std::string trueLabel, std::string falseLabel) {
+        self.calculateCond(cond, trueLabel);
+        self.addIR(new MBranchIRStatement(falseLabel));
         self.resetRegUsage();
     }
 
@@ -554,62 +553,37 @@ private:
         regNum = 0;
     }
 
-    MIRVar *calculateCond(MCond *cond) {
-        return self.calculateLOrExp(cond->lOrExp);
+    void calculateCond(MCond *cond, std::string trueLabel) {
+        self.calculateLOrExp(cond->lOrExp, trueLabel);
     }
 
-    MIRVar *calculateLOrExp(MLOrExp *lOrExp) {
-        bool hasNoException = true;
-        int lAndExpNum = lOrExp->lAndExps->size();
-        if (lAndExpNum < 2) {
-            return calculateLAndExp((*(lOrExp->lAndExps))[0]);
-        }
-        auto lAndResults = new std::vector<MIRVar *>();
+    void calculateLOrExp(MLOrExp *lOrExp, std::string trueLabel) {
+        // label用来短路求值，当足以判断表达式值的时候，就跳到trueLabel
+        // 不会有返回值
         for (auto lAndExp: *(lOrExp->lAndExps)) {
-            auto result = self.calculateLAndExp(lAndExp);
-            if (result == nullptr) hasNoException = false;
-            else lAndResults->push_back(result);
+            // 告诉lAndExp，只有所有元素都是1才跳到trueLabel，否则跳到andExpFalseLabel
+            // andExpFalseLabel会设置在lAndExp的最后
+            // 当这一整个lAndExp结束了，就跳到andExpFalseLabel
+            auto andExpFalseLabel = self.labelManager->getLabel("and_exp_false_label_for_short_circuit");
+            self.calculateLAndExp(lAndExp, andExpFalseLabel, trueLabel);
+            self.addIR(new MLabelIRStatement(andExpFalseLabel));
         }
-        if (!hasNoException)
-            return nullptr;
-        auto tempVarName = self.newRegIRVar();
-        self.addIR(
-                new MBinaryIRStatement(MBinaryIRType::OR, tempVarName,
-                                       (*lAndResults)[0], (*lAndResults)[1]));
-
-        for (int i = 2; i < lAndExpNum; i++) {
-            self.addIR(
-                    new MBinaryIRStatement(MBinaryIRType::OR, tempVarName,
-                                           tempVarName, (*lAndResults)[i]));
-        }
-        return tempVarName;
     }
 
-    MIRVar *calculateLAndExp(MLAndExp *lAndExp) {
+    void calculateLAndExp(MLAndExp *lAndExp, std::string falseLabel, std::string trueLabel) {
+        // 如果有一个eqExp“不成立”，falseLabel
         bool hasNoException = true;
-        int eqExpNum = lAndExp->eqExps->size();
-        if (eqExpNum < 2) {
-            return calculateEqExp((*(lAndExp->eqExps))[0]);
-        }
-        auto eqResults = new std::vector<MIRVar *>();
+
         for (auto eqExp: *(lAndExp->eqExps)) {
             auto result = self.calculateEqExp(eqExp);
             if (result == nullptr) hasNoException = false;
-            else eqResults->push_back(result);
+            else {
+                self.addIR(new MBranchNotTrueIRStatement(result, falseLabel));
+            }
         }
+        self.addIR(new MBranchIRStatement(trueLabel));
         if (!hasNoException)
-            return nullptr;
-        auto tempVarName = self.newRegIRVar();
-        self.addIR(
-                new MBinaryIRStatement(MBinaryIRType::AND, tempVarName,
-                                       (*eqResults)[0], (*eqResults)[1]));
-
-        for (int i = 2; i < eqExpNum; i++) {
-            self.addIR(
-                    new MBinaryIRStatement(MBinaryIRType::AND, tempVarName,
-                                           tempVarName, (*eqResults)[i]));
-        }
-        return tempVarName;
+            return;
     }
 
     MIRVar *calculateEqExp(MEqExp *eqExp) {
